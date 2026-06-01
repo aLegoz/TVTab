@@ -627,6 +627,56 @@ function buildExpressApp() {
   return app
 }
 
+// ─── Windows Firewall ────────────────────────────────────────────────────────
+function setupFirewall(port) {
+  if (process.platform !== 'win32') return
+  const { exec } = require('child_process')
+  const ruleName = `TVTab Server ${port}`
+  exec(`netsh advfirewall firewall show rule name="${ruleName}"`, (err) => {
+    if (!err) return // rule already exists
+    exec(
+      `netsh advfirewall firewall add rule name="${ruleName}" dir=in action=allow protocol=TCP localport=${port} enable=yes profile=any`,
+      (addErr) => {
+        if (addErr) {
+          // No admin rights — show persistent tooltip hint
+          if (tray) tray.setToolTip(`TVTab Server ⚠ Запустіть як Адміністратор, щоб дозволити вхідні підключення`)
+        } else {
+          if (tray) tray.displayBalloon({ title: 'TVTab Server', content: `Брандмауер: дозволено TCP порт ${port}`, iconType: 'info' })
+        }
+      }
+    )
+  })
+}
+
+function relaunchAsAdmin() {
+  const { spawn } = require('child_process')
+  spawn('powershell', ['-Command', `Start-Process '${process.execPath}' -Verb RunAs`], { detached: true, stdio: 'ignore' }).unref()
+  app.quit()
+}
+
+function isRunningAsAdmin() {
+  if (process.platform !== 'win32') return true
+  try { require('child_process').execSync('net session', { stdio: 'ignore' }); return true } catch { return false }
+}
+
+// ─── UDP discovery broadcast ──────────────────────────────────────────────────
+function startUdpBroadcast(port) {
+  const dgram = require('dgram')
+  const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true })
+  socket.bind(() => {
+    socket.setBroadcast(true)
+    const send = () => {
+      try {
+        const msg = Buffer.from(`TVTAB:${port}`)
+        socket.send(msg, 0, msg.length, 47910, '255.255.255.255')
+      } catch {}
+    }
+    send()
+    setInterval(send, 5000)
+  })
+  socket.on('error', () => {}) // ignore errors silently
+}
+
 // ─── Get local network IP ─────────────────────────────────────────────────────
 function getLocalIP() {
   const nets = os.networkInterfaces()
@@ -695,6 +745,11 @@ function buildContextMenu() {
         rebuildTrayMenu()
       }
     },
+    {
+      label: isRunningAsAdmin() ? '✓ Брандмауер налаштовано' : '🔥 Налаштувати брандмауер (Адміністратор)',
+      enabled: !isRunningAsAdmin(),
+      click: relaunchAsAdmin
+    },
     { type: 'separator' },
     { label: '❌ Завершити', click: () => { app.quit() } },
   ])
@@ -750,6 +805,12 @@ app.whenReady().then(async () => {
 
   // Start Express server
   startServer()
+
+  // UDP discovery broadcast (so clients can find us without knowing IP)
+  startUdpBroadcast(PORT)
+
+  // Try to add Windows Firewall rule (only succeeds with admin rights)
+  setTimeout(() => setupFirewall(PORT), 2000) // wait for tray to be ready for balloon
 })
 
 app.on('window-all-closed', (e) => e.preventDefault()) // keep running in tray

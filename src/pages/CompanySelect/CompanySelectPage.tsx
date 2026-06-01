@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import {
   Card, Button, Modal, Form, Input, Select, Typography,
-  Space, Popconfirm, Empty, Spin, Tag, Tooltip, Radio, message, Divider
+  Space, Popconfirm, Empty, Spin, Tag, Tooltip, Radio, message, Divider, List
 } from 'antd'
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, ArrowRightOutlined,
-  ApiOutlined, DisconnectOutlined
+  ApiOutlined, DisconnectOutlined, WifiOutlined
 } from '@ant-design/icons'
 import type { Company } from '../../types'
 import { CURRENCIES } from '../../types'
@@ -24,6 +24,9 @@ export default function CompanySelectPage({ onSelect }: Props) {
   const [serverUrl, setServerUrl] = useState('')
   const [connected, setConnected] = useState(false)
   const [connecting, setConnecting] = useState(false)
+  const [scanning, setScanning] = useState(false)
+  const [scanModal, setScanModal] = useState(false)
+  const [foundServers, setFoundServers] = useState<string[]>([])
 
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
@@ -55,6 +58,20 @@ export default function CompanySelectPage({ onSelect }: Props) {
       setCompanies(list)
       setLoading(false)
     })
+  }
+
+  async function scanNetwork() {
+    setScanning(true)
+    setScanModal(true)
+    setFoundServers([])
+    try {
+      const servers = await window.api.network.findServers()
+      setFoundServers(servers)
+    } catch {
+      setFoundServers([])
+    } finally {
+      setScanning(false)
+    }
   }
 
   async function connectToServer(url: string) {
@@ -190,6 +207,14 @@ export default function CompanySelectPage({ onSelect }: Props) {
                   onPressEnter={() => connectToServer(serverUrl)}
                   disabled={connected}
                 />
+                <Tooltip title="Знайти сервер в мережі">
+                  <Button
+                    icon={<WifiOutlined />}
+                    onClick={scanNetwork}
+                    loading={scanning}
+                    disabled={connected}
+                  />
+                </Tooltip>
                 {!connected ? (
                   <Button
                     type="primary"
@@ -274,6 +299,39 @@ export default function CompanySelectPage({ onSelect }: Props) {
           </Spin>
         )}
       </div>
+
+      {/* Network scan results */}
+      <Modal
+        title={<><WifiOutlined /> Сервери TVTab в мережі</>}
+        open={scanModal}
+        onCancel={() => setScanModal(false)}
+        footer={null}
+        width={400}
+      >
+        <Spin spinning={scanning} tip="Сканування мережі... (3 сек)">
+          {!scanning && foundServers.length === 0 && (
+            <Empty description="Серверів не знайдено" image={Empty.PRESENTED_IMAGE_SIMPLE}
+              style={{ margin: '16px 0' }} />
+          )}
+          {foundServers.length > 0 && (
+            <List
+              dataSource={foundServers}
+              renderItem={(url) => (
+                <List.Item
+                  actions={[
+                    <Button type="primary" size="small"
+                      onClick={() => { setServerUrl(url); setScanModal(false) }}>
+                      Вибрати
+                    </Button>
+                  ]}
+                >
+                  <span style={{ fontFamily: 'monospace', fontSize: 14 }}>{url}</span>
+                </List.Item>
+              )}
+            />
+          )}
+        </Spin>
+      </Modal>
 
       <Modal
         title={editTarget ? t.company.modalEdit : t.company.modalCreate}

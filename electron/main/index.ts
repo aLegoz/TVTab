@@ -60,6 +60,33 @@ app.whenReady().then(async () => {
   registerHolidayHandlers(ipcMain)
   registerMonthSettingsHandlers(ipcMain)
 
+  // Network discovery: listen for TVTab server UDP broadcasts for 3 seconds
+  ipcMain.handle('network:findServers', () => {
+    return new Promise<string[]>((resolve) => {
+      const dgram = require('dgram')
+      const found: string[] = []
+      let closed = false
+
+      const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true })
+
+      socket.on('error', () => { if (!closed) { closed = true; resolve(found) } })
+
+      socket.bind(47910, () => {
+        socket.on('message', (msg: Buffer, rinfo: { address: string }) => {
+          const str = msg.toString()
+          if (str.startsWith('TVTAB:')) {
+            const port = str.split(':')[1]
+            const url = `http://${rinfo.address}:${port}`
+            if (!found.includes(url)) found.push(url)
+          }
+        })
+        setTimeout(() => {
+          if (!closed) { closed = true; try { socket.close() } catch {}; resolve(found) }
+        }, 3000)
+      })
+    })
+  })
+
   createWindow()
 
   app.on('activate', () => {

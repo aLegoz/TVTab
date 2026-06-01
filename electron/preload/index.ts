@@ -59,6 +59,9 @@ const api = {
       ipcRenderer.invoke('monthSettings:get', year, month, key),
     set: (year: number, month: number, key: string, value: string) =>
       ipcRenderer.invoke('monthSettings:set', year, month, key, value),
+  },
+  network: {
+    findServers: (): Promise<string[]> => ipcRenderer.invoke('network:findServers')
   }
 }
 
