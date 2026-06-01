@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react'
 import {
   Card, Button, Modal, Form, Input, Select, Typography,
-  Space, Popconfirm, Empty, Spin, Tag, Tooltip
+  Space, Popconfirm, Empty, Spin, Tag, Tooltip, Radio, message, Divider
 } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, ArrowRightOutlined } from '@ant-design/icons'
+import {
+  PlusOutlined, EditOutlined, DeleteOutlined, ArrowRightOutlined,
+  ApiOutlined, DisconnectOutlined
+} from '@ant-design/icons'
 import type { Company } from '../../types'
 import { CURRENCIES } from '../../types'
 import { useLang } from '../../i18n/LangContext'
@@ -12,11 +15,16 @@ import dayjs from 'dayjs'
 const { Title, Text } = Typography
 
 interface Props {
-  onSelect: (company: Company) => void
+  onSelect: (company: Company, serverUrl?: string) => void
 }
 
 export default function CompanySelectPage({ onSelect }: Props) {
   const { t } = useLang()
+  const [mode, setMode] = useState<'local' | 'remote'>('local')
+  const [serverUrl, setServerUrl] = useState('')
+  const [connected, setConnected] = useState(false)
+  const [connecting, setConnecting] = useState(false)
+
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(true)
   const [opening, setOpening] = useState<string | null>(null)
@@ -24,18 +32,77 @@ export default function CompanySelectPage({ onSelect }: Props) {
   const [editTarget, setEditTarget] = useState<Company | null>(null)
   const [form] = Form.useForm()
 
+  // Read saved settings on mount
   useEffect(() => {
+    window.api.settings.getAll().then((all: any) => {
+      const savedMode = all.mode === 'remote' ? 'remote' : 'local'
+      const savedUrl = all.serverUrl || ''
+      setMode(savedMode)
+      setServerUrl(savedUrl)
+      if (savedMode === 'local') {
+        loadLocalCompanies()
+      } else if (savedUrl) {
+        connectToServer(savedUrl)
+      } else {
+        setLoading(false)
+      }
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function loadLocalCompanies() {
+    setLoading(true)
     window.api.companies.list().then((list: Company[]) => {
       setCompanies(list)
       setLoading(false)
     })
-  }, [])
+  }
+
+  async function connectToServer(url: string) {
+    setConnecting(true)
+    try {
+      const res = await fetch(`${url}/companies`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      setCompanies(data)
+      setConnected(true)
+      await window.api.settings.set('mode', 'remote')
+      await window.api.settings.set('serverUrl', url)
+    } catch (e: any) {
+      message.error(`Не вдалося підключитися: ${e.message}`)
+      setConnected(false)
+    } finally {
+      setConnecting(false)
+      setLoading(false)
+    }
+  }
+
+  function disconnect() {
+    setConnected(false)
+    setCompanies([])
+  }
+
+  async function handleModeChange(newMode: 'local' | 'remote') {
+    setMode(newMode)
+    setConnected(false)
+    setCompanies([])
+    await window.api.settings.set('mode', newMode)
+    if (newMode === 'local') {
+      loadLocalCompanies()
+    } else {
+      setLoading(false)
+    }
+  }
 
   async function handleOpen(company: Company) {
     setOpening(company.id)
     try {
-      await window.api.companies.open(company.id)
-      onSelect(company)
+      if (mode === 'remote') {
+        await fetch(`${serverUrl}/companies/${company.id}/open`, { method: 'POST' })
+        onSelect(company, serverUrl)
+      } else {
+        await window.api.companies.open(company.id)
+        onSelect(company)
+      }
     } finally {
       setOpening(null)
     }
@@ -55,23 +122,42 @@ export default function CompanySelectPage({ onSelect }: Props) {
   }
 
   async function handleSubmit(values: any) {
-    if (editTarget) {
-      await window.api.companies.update(editTarget.id, {
-        name: values.name,
-        currency: values.currency
-      })
+    if (mode === 'remote') {
+      if (editTarget) {
+        await fetch(`${serverUrl}/companies/${editTarget.id}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: values.name, currency: values.currency })
+        })
+      } else {
+        await fetch(`${serverUrl}/companies`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: values.name, currency: values.currency })
+        })
+      }
+      const res = await fetch(`${serverUrl}/companies`)
+      setCompanies(await res.json())
     } else {
-      await window.api.companies.create(values.name, values.currency)
+      if (editTarget) {
+        await window.api.companies.update(editTarget.id, { name: values.name, currency: values.currency })
+      } else {
+        await window.api.companies.create(values.name, values.currency)
+      }
+      loadLocalCompanies()
     }
-    const list = await window.api.companies.list()
-    setCompanies(list)
     setModalOpen(false)
   }
 
   async function handleDelete(id: string) {
-    await window.api.companies.delete(id)
-    setCompanies((prev) => prev.filter((c) => c.id !== id))
+    if (mode === 'remote') {
+      await fetch(`${serverUrl}/companies/${id}`, { method: 'DELETE' })
+      setCompanies((prev) => prev.filter((c) => c.id !== id))
+    } else {
+      await window.api.companies.delete(id)
+      setCompanies((prev) => prev.filter((c) => c.id !== id))
+    }
   }
+
+  const showCompanies = mode === 'local' || (mode === 'remote' && connected)
 
   return (
     <div style={{
@@ -80,66 +166,113 @@ export default function CompanySelectPage({ onSelect }: Props) {
       justifyContent: 'center', padding: 32
     }}>
       <div style={{ width: '100%', maxWidth: 680 }}>
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <Title level={2} style={{ margin: 0 }}>{t.company.title}</Title>
           <Text type="secondary">{t.company.subtitle}</Text>
         </div>
 
-        <Spin spinning={loading}>
-          {!loading && companies.length === 0 && (
-            <Card style={{ textAlign: 'center', marginBottom: 16 }}>
-              <Empty description={t.company.noCompanies} image={Empty.PRESENTED_IMAGE_SIMPLE} />
-            </Card>
+        {/* Mode selector */}
+        <Card size="small" style={{ marginBottom: 16 }}>
+          <Radio.Group value={mode} onChange={(e) => handleModeChange(e.target.value)}>
+            <Radio value="local">{t.settings.local}</Radio>
+            <Radio value="remote">{t.settings.remote}</Radio>
+          </Radio.Group>
+
+          {mode === 'remote' && (
+            <>
+              <Divider style={{ margin: '10px 0' }} />
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <Input
+                  value={serverUrl}
+                  onChange={(e) => setServerUrl(e.target.value)}
+                  placeholder="http://192.168.1.100:3001"
+                  style={{ flex: 1 }}
+                  onPressEnter={() => connectToServer(serverUrl)}
+                  disabled={connected}
+                />
+                {!connected ? (
+                  <Button
+                    type="primary"
+                    icon={<ApiOutlined />}
+                    loading={connecting}
+                    onClick={() => connectToServer(serverUrl)}
+                    disabled={!serverUrl}
+                  >
+                    {t.settings.remote}
+                  </Button>
+                ) : (
+                  <Button icon={<DisconnectOutlined />} onClick={disconnect} danger>
+                    {t.settings.local}
+                  </Button>
+                )}
+              </div>
+              {connected && (
+                <Text type="success" style={{ fontSize: 12, display: 'block', marginTop: 4 }}>
+                  ✓ {serverUrl}
+                </Text>
+              )}
+            </>
           )}
+        </Card>
 
-          <Space direction="vertical" style={{ width: '100%' }} size={12}>
-            {companies.map((c) => (
-              <Card key={c.id} size="small" style={{ borderRadius: 8 }} bodyStyle={{ padding: '12px 16px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontWeight: 600, fontSize: 15 }}>{c.name}</span>
-                      <Tag style={{ fontFamily: 'monospace' }}>{c.currency}</Tag>
-                    </div>
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      {t.company.lastOpened} {dayjs(c.lastOpenedAt).format('DD.MM.YYYY HH:mm')}
-                    </Text>
-                  </div>
-                  <Space>
-                    <Tooltip title={t.company.edit}>
-                      <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(c)} />
-                    </Tooltip>
-                    <Popconfirm
-                      title={t.company.deleteTitle}
-                      description={t.company.deleteDesc}
-                      onConfirm={() => handleDelete(c.id)}
-                      okText={t.company.deleteOk}
-                      okButtonProps={{ danger: true }}
-                    >
-                      <Tooltip title={t.company.delete}>
-                        <Button size="small" danger icon={<DeleteOutlined />} />
-                      </Tooltip>
-                    </Popconfirm>
-                    <Button
-                      type="primary"
-                      icon={<ArrowRightOutlined />}
-                      loading={opening === c.id}
-                      onClick={() => handleOpen(c)}
-                    >
-                      {t.company.open}
-                    </Button>
-                  </Space>
-                </div>
+        {/* Companies list */}
+        {showCompanies && (
+          <Spin spinning={loading}>
+            {!loading && companies.length === 0 && (
+              <Card style={{ textAlign: 'center', marginBottom: 16 }}>
+                <Empty description={t.company.noCompanies} image={Empty.PRESENTED_IMAGE_SIMPLE} />
               </Card>
-            ))}
-          </Space>
+            )}
 
-          <div style={{ marginTop: 16, textAlign: 'center' }}>
-            <Button type="dashed" icon={<PlusOutlined />} size="large" onClick={openCreate}>
-              {t.company.create}
-            </Button>
-          </div>
-        </Spin>
+            <Space direction="vertical" style={{ width: '100%' }} size={12}>
+              {companies.map((c) => (
+                <Card key={c.id} size="small" style={{ borderRadius: 8 }} bodyStyle={{ padding: '12px 16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontWeight: 600, fontSize: 15 }}>{c.name}</span>
+                        <Tag style={{ fontFamily: 'monospace' }}>{c.currency}</Tag>
+                      </div>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {t.company.lastOpened} {dayjs(c.lastOpenedAt).format('DD.MM.YYYY HH:mm')}
+                      </Text>
+                    </div>
+                    <Space>
+                      <Tooltip title={t.company.edit}>
+                        <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(c)} />
+                      </Tooltip>
+                      <Popconfirm
+                        title={t.company.deleteTitle}
+                        description={t.company.deleteDesc}
+                        onConfirm={() => handleDelete(c.id)}
+                        okText={t.company.deleteOk}
+                        okButtonProps={{ danger: true }}
+                      >
+                        <Tooltip title={t.company.delete}>
+                          <Button size="small" danger icon={<DeleteOutlined />} />
+                        </Tooltip>
+                      </Popconfirm>
+                      <Button
+                        type="primary"
+                        icon={<ArrowRightOutlined />}
+                        loading={opening === c.id}
+                        onClick={() => handleOpen(c)}
+                      >
+                        {t.company.open}
+                      </Button>
+                    </Space>
+                  </div>
+                </Card>
+              ))}
+            </Space>
+
+            <div style={{ marginTop: 16, textAlign: 'center' }}>
+              <Button type="dashed" icon={<PlusOutlined />} size="large" onClick={openCreate}>
+                {t.company.create}
+              </Button>
+            </div>
+          </Spin>
+        )}
       </div>
 
       <Modal

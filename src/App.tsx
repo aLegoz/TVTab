@@ -6,6 +6,9 @@ import {
   SettingOutlined, SwapOutlined
 } from '@ant-design/icons'
 import { RepositoryProvider } from './api/RepositoryContext'
+import { LocalRepository } from './api/localRepo'
+import { RemoteRepository } from './api/remoteRepo'
+import type { IRepository } from './api/IRepository'
 import EmployeesPage from './pages/Employees/EmployeesPage'
 import TimesheetPage from './pages/Timesheet/TimesheetPage'
 import SalaryPage from './pages/Salary/SalaryPage'
@@ -113,16 +116,33 @@ function AppLayout({ onSwitch }: { onSwitch: () => void }) {
 
 export default function App() {
   const [company, setCompany] = useState<Company | null>(null)
+  const [repo, setRepo] = useState<IRepository | null>(null)
 
-  if (!company) {
-    return <CompanySelectPage onSelect={setCompany} />
+  async function handleSelect(company: Company, serverUrl?: string) {
+    if (serverUrl) {
+      setCompany(company)
+      setRepo(new RemoteRepository(`${serverUrl}/companies/${company.id}`))
+    } else {
+      await window.api.companies.open(company.id)
+      setCompany(company)
+      setRepo(new LocalRepository())
+    }
+  }
+
+  function handleSwitch() {
+    setCompany(null)
+    setRepo(null)
+  }
+
+  if (!company || !repo) {
+    return <CompanySelectPage onSelect={handleSelect} />
   }
 
   return (
-    <CompanyContext.Provider value={{ company, switchCompany: () => setCompany(null) }}>
-      <RepositoryProvider>
+    <CompanyContext.Provider value={{ company, switchCompany: handleSwitch }}>
+      <RepositoryProvider repo={repo}>
         <HashRouter>
-          <AppLayout onSwitch={() => setCompany(null)} />
+          <AppLayout onSwitch={handleSwitch} />
         </HashRouter>
       </RepositoryProvider>
     </CompanyContext.Provider>
