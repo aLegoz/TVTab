@@ -1,0 +1,22 @@
+{
+  "name": "tvtab-server-app",
+  "version": "1.0.0",
+  "description": "TVTab Server — tray app",
+  "author": "a.chekerda@gmail.com",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win",
+    "postinstall": "electron-builder install-app-deps || true"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.0",
+    "exceljs": "^4.4.0",
+    "sql.js": "^1.12.0"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  }
+}

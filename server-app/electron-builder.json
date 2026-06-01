@@ -1,0 +1,19 @@
+{
+  "appId": "com.tvtab.server",
+  "productName": "TVTab Server",
+  "directories": {
+    "output": "dist"
+  },
+  "files": [
+    "main.js"
+  ],
+  "extraResources": [
+    {
+      "from": "node_modules/sql.js/dist/sql-wasm.wasm",
+      "to": "sql-wasm.wasm"
+    }
+  ],
+  "win": {
+    "target": [{ "target": "portable", "arch": ["x64"] }]
+  }
+}
