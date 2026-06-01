@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Table, Button, Modal, Form, Input, Select, InputNumber,
   DatePicker, Space, Tag, Popconfirm, Typography, message,
@@ -47,6 +47,10 @@ export default function EmployeesPage() {
   }, [repo])
 
   useEffect(() => { load() }, [load])
+
+  const loadRef = useRef(load)
+  useEffect(() => { loadRef.current = load }, [load])
+  useEffect(() => repo.subscribeToChanges(() => loadRef.current()), [repo])
 
   async function loadHistory(emp: Employee) {
     setHistoryLoading(true)

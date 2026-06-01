@@ -34,6 +34,20 @@ function getCompany(id) {
   return masterDb.prepare('SELECT * FROM companies WHERE id=?').get(id)
 }
 
+// ─── SSE broadcast ────────────────────────────────────────────────────────────
+const sseClients = new Map()
+
+function broadcast(companyId) {
+  const clients = sseClients.get(companyId)
+  if (!clients || clients.size === 0) return
+  const data = 'event: change\ndata: {}\n\n'
+  const dead = []
+  for (const res of clients) {
+    try { res.write(data) } catch { dead.push(res) }
+  }
+  dead.forEach(r => clients.delete(r))
+}
+
 // ─── Per-company DB management ────────────────────────────────────────────────
 const companyDbs = {}
 function getCompanyDb(id) {
@@ -220,16 +234,31 @@ app.use('/companies/:id', (req, res, next) => {
   next()
 })
 
+// ─── SSE events ───────────────────────────────────────────────────────────────
+app.get('/companies/:id/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders()
+  const id = req.params.id
+  if (!sseClients.has(id)) sseClients.set(id, new Set())
+  sseClients.get(id).add(res)
+  const hb = setInterval(() => { try { res.write(':hb\n\n') } catch {} }, 25000)
+  req.on('close', () => { clearInterval(hb); sseClients.get(id)?.delete(res) })
+})
+
 // ─── Departments ──────────────────────────────────────────────────────────────
 app.get('/companies/:id/departments', (req, res) => {
   res.json(req.db.prepare('SELECT * FROM departments ORDER BY name').all())
 })
 app.post('/companies/:id/departments', (req, res) => {
   const r = req.db.prepare('INSERT INTO departments (name) VALUES (?)').run(req.body.name)
+  broadcast(req.companyId)
   res.json({ id: r.lastInsertRowid, name: req.body.name })
 })
 app.delete('/companies/:id/departments/:did', (req, res) => {
   req.db.prepare('DELETE FROM departments WHERE id=?').run(req.params.did)
+  broadcast(req.companyId)
   res.json({ ok: true })
 })
 
@@ -246,6 +275,7 @@ app.post('/companies/:id/employees', (req, res) => {
     INSERT INTO employees (full_name,position,department_id,rate_type,rate,hired_date,is_active)
     VALUES (?,?,?,?,?,?,1)
   `).run(b.fullName, b.position||'', b.departmentId||null, b.rateType, b.rate, b.hiredDate||null)
+  broadcast(req.companyId)
   res.json({ id: r.lastInsertRowid, ...b, isActive: true })
 })
 app.put('/companies/:id/employees/:eid', (req, res) => {
@@ -253,10 +283,12 @@ app.put('/companies/:id/employees/:eid', (req, res) => {
   req.db.prepare(`
     UPDATE employees SET full_name=?,position=?,department_id=?,rate_type=?,rate=?,hired_date=?,is_active=? WHERE id=?
   `).run(b.fullName, b.position||'', b.departmentId||null, b.rateType, b.rate, b.hiredDate||null, b.isActive?1:0, req.params.eid)
+  broadcast(req.companyId)
   res.json({ ok: true })
 })
 app.delete('/companies/:id/employees/:eid', (req, res) => {
   req.db.prepare('DELETE FROM employees WHERE id=?').run(req.params.eid)
+  broadcast(req.companyId)
   res.json({ ok: true })
 })
 
@@ -276,10 +308,12 @@ app.post('/companies/:id/timesheet/record', (req, res) => {
       arrival_time=excluded.arrival_time, departure_time=excluded.departure_time,
       overtime_coeff=excluded.overtime_coeff
   `).run(b.employeeId, b.date, b.code, b.hours, b.arrivalTime||null, b.departureTime||null, b.overtimeCoeff||null)
+  broadcast(req.companyId)
   res.json({ ok: true })
 })
 app.delete('/companies/:id/timesheet/record/:empId/:date', (req, res) => {
   req.db.prepare('DELETE FROM timesheet_records WHERE employee_id=? AND date=?').run(req.params.empId, req.params.date)
+  broadcast(req.companyId)
   res.json({ ok: true })
 })
 app.post('/companies/:id/timesheet/bulk', (req, res) => {
@@ -295,6 +329,7 @@ app.post('/companies/:id/timesheet/bulk', (req, res) => {
     for (const r of records) insert.run(r.employeeId,r.date,r.code,r.hours,r.arrivalTime||null,r.departureTime||null,r.overtimeCoeff||null)
   })
   many(req.body)
+  broadcast(req.companyId)
   res.json({ ok: true })
 })
 
@@ -305,6 +340,7 @@ app.get('/companies/:id/salary-history/:empId', (req, res) => {
 app.post('/companies/:id/salary-history', (req, res) => {
   const b = req.body
   const r = req.db.prepare('INSERT INTO salary_history (employee_id,effective_from,rate_type,rate,note) VALUES (?,?,?,?,?)').run(b.employeeId, b.effectiveFrom, b.rateType, b.rate, b.note||'')
+  broadcast(req.companyId)
   res.json({ id: r.lastInsertRowid, ...b })
 })
 app.delete('/companies/:id/salary-history/:histId', (req, res) => {
@@ -312,6 +348,7 @@ app.delete('/companies/:id/salary-history/:histId', (req, res) => {
   const rows = req.db.prepare('SELECT COUNT(*) AS cnt FROM salary_history WHERE employee_id=?').get(empId)
   if (rows.cnt <= 1) return res.status(400).json({ error: 'Cannot delete last rate record' })
   req.db.prepare('DELETE FROM salary_history WHERE id=?').run(req.params.histId)
+  broadcast(req.companyId)
   res.json({ ok: true })
 })
 
@@ -323,8 +360,8 @@ app.get('/companies/:id/holidays/:year/:month', (req, res) => {
 app.post('/companies/:id/holidays/toggle', (req, res) => {
   const { date } = req.body
   const existing = req.db.prepare('SELECT id FROM holidays WHERE date=?').get(date)
-  if (existing) { req.db.prepare('DELETE FROM holidays WHERE date=?').run(date); res.json({ active: false }) }
-  else { req.db.prepare('INSERT INTO holidays (date) VALUES (?)').run(date); res.json({ active: true }) }
+  if (existing) { req.db.prepare('DELETE FROM holidays WHERE date=?').run(date); broadcast(req.companyId); res.json({ active: false }) }
+  else { req.db.prepare('INSERT INTO holidays (date) VALUES (?)').run(date); broadcast(req.companyId); res.json({ active: true }) }
 })
 app.get('/companies/:id/workdays/:year/:month', (req, res) => {
   const prefix = `${req.params.year}-${String(req.params.month).padStart(2,'0')}`
@@ -333,8 +370,8 @@ app.get('/companies/:id/workdays/:year/:month', (req, res) => {
 app.post('/companies/:id/workdays/toggle', (req, res) => {
   const { date } = req.body
   const existing = req.db.prepare('SELECT id FROM workdays WHERE date=?').get(date)
-  if (existing) { req.db.prepare('DELETE FROM workdays WHERE date=?').run(date); res.json({ active: false }) }
-  else { req.db.prepare('INSERT INTO workdays (date) VALUES (?)').run(date); res.json({ active: true }) }
+  if (existing) { req.db.prepare('DELETE FROM workdays WHERE date=?').run(date); broadcast(req.companyId); res.json({ active: false }) }
+  else { req.db.prepare('INSERT INTO workdays (date) VALUES (?)').run(date); broadcast(req.companyId); res.json({ active: true }) }
 })
 
 // ─── Month settings ───────────────────────────────────────────────────────────
@@ -346,6 +383,7 @@ app.get('/companies/:id/month-settings/:year/:month/:key', (req, res) => {
 app.put('/companies/:id/month-settings/:year/:month/:key', (req, res) => {
   const { year, month, key } = req.params
   req.db.prepare('INSERT OR REPLACE INTO month_settings (year,month,key,value) VALUES (?,?,?,?)').run(Number(year), Number(month), key, String(req.body.value))
+  broadcast(req.companyId)
   res.json({ ok: true })
 })
 

@@ -50,4 +50,7 @@ export interface IRepository {
   // Settings
   getSettings(): Promise<AppSettings>
   setSetting(key: keyof AppSettings, value: string): Promise<void>
+
+  // Real-time sync (returns unsubscribe fn)
+  subscribeToChanges(callback: () => void): () => void
 }

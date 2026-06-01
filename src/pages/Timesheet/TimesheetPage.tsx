@@ -105,6 +105,11 @@ export default function TimesheetPage() {
 
   useEffect(() => { load() }, [load])
 
+  // Real-time sync: keep ref to latest load, resubscribe only when repo changes
+  const loadRef = useRef(load)
+  useEffect(() => { loadRef.current = load }, [load])
+  useEffect(() => repo.subscribeToChanges(() => loadRef.current()), [repo])
+
   async function toggleHoliday(date: string) {
     try {
       const result = await repo.toggleHoliday(date)

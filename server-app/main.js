@@ -172,8 +172,24 @@ function getCompanyDb(id) {
   return companyDbs[id]
 }
 
+// ─── SSE broadcast ────────────────────────────────────────────────────────────
+const sseClients = new Map() // companyId → Set<res>
+
+function broadcast(companyId) {
+  const clients = sseClients.get(companyId)
+  if (!clients || clients.size === 0) return
+  const data = 'event: change\ndata: {}\n\n'
+  const dead = []
+  for (const res of clients) {
+    try { res.write(data) } catch { dead.push(res) }
+  }
+  dead.forEach(r => clients.delete(r))
+}
+
 function persistCompany(id) {
-  if (companyDbs[id]) persist(companyDbs[id].db, companyDbs[id].path)
+  if (!companyDbs[id]) return
+  persist(companyDbs[id].db, companyDbs[id].path)
+  broadcast(id)
 }
 
 // ─── Salary helpers ───────────────────────────────────────────────────────────
@@ -304,6 +320,19 @@ function buildExpressApp() {
     req.db = db
     req.companyId = req.params.id
     next()
+  })
+
+  // ── SSE events ────────────────────────────────────────────────────────────
+  app.get('/companies/:id/events', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Connection', 'keep-alive')
+    res.flushHeaders()
+    const id = req.params.id
+    if (!sseClients.has(id)) sseClients.set(id, new Set())
+    sseClients.get(id).add(res)
+    const hb = setInterval(() => { try { res.write(':hb\n\n') } catch {} }, 25000)
+    req.on('close', () => { clearInterval(hb); sseClients.get(id)?.delete(res) })
   })
 
   // ── Departments ───────────────────────────────────────────────────────────

@@ -76,6 +76,20 @@ export class RemoteRepository implements IRepository {
     return null
   }
 
+  subscribeToChanges(callback: () => void): () => void {
+    const es = new EventSource(`${this.baseUrl}/events`)
+    let debounce: ReturnType<typeof setTimeout> | null = null
+    es.addEventListener('change', () => {
+      if (debounce) clearTimeout(debounce)
+      debounce = setTimeout(callback, 300)
+    })
+    es.onerror = () => {}
+    return () => {
+      if (debounce) clearTimeout(debounce)
+      es.close()
+    }
+  }
+
   async getSettings(): Promise<AppSettings> {
     return {
       mode: 'remote',

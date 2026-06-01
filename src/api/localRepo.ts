@@ -203,4 +203,8 @@ export class LocalRepository implements IRepository {
   async setSetting(key: keyof AppSettings, value: string): Promise<void> {
     return this.api.settings.set(key, value)
   }
+
+  subscribeToChanges(_cb: () => void): () => void {
+    return () => {}
+  }
 }

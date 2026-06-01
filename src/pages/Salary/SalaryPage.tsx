@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Table, Button, Typography, Spin, message, Tag, Drawer,
   Descriptions, Divider, Space, Statistic, InputNumber, Tooltip, Dropdown
@@ -69,6 +69,10 @@ export default function SalaryPage() {
   }, [repo, year, month])
 
   useEffect(() => { load() }, [load])
+
+  const loadRef = useRef(load)
+  useEffect(() => { loadRef.current = load }, [load])
+  useEffect(() => repo.subscribeToChanges(() => loadRef.current()), [repo])
 
   function prevMonth() {
     if (month === 1) { setYear(y => y - 1); setMonth(12) }
