@@ -1,15 +1,21 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Table, Select, Typography, Popover, Button, Space, Spin, message, Tooltip, TimePicker, InputNumber } from 'antd'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { Table, Select, Typography, Popover, Button, Space, Spin, message, Tooltip, Dropdown } from 'antd'
 import { LeftOutlined, RightOutlined } from '@ant-design/icons'
 import { useRepository } from '../../api/RepositoryContext'
 import { useLang } from '../../i18n/LangContext'
 import type { Employee, TimesheetRecord, AttendanceCode, AppSettings } from '../../types'
 import { ATTENDANCE_CODES } from '../../types'
-import dayjs from 'dayjs'
 
-const { Title, Text } = Typography
+const { Title } = Typography
 
 type RecordMap = Map<string, TimesheetRecord>
+
+type CopiedCell = {
+  code: AttendanceCode
+  hours: number
+  arrivalTime?: string
+  departureTime?: string
+}
 
 function recordKey(employeeId: number, date: string) {
   return `${employeeId}_${date}`
@@ -40,8 +46,6 @@ interface Schedule {
   end: string
 }
 
-const WORKING_CODES: AttendanceCode[] = ['Я', 'К']
-
 export default function TimesheetPage() {
   const repo = useRepository()
   const { t } = useLang()
@@ -57,6 +61,8 @@ export default function TimesheetPage() {
   })
   const [globalOvertimeCoeff, setGlobalOvertimeCoeff] = useState(1.5)
   const [loading, setLoading] = useState(false)
+  const [openCellKey, setOpenCellKey] = useState<string | null>(null)
+  const [copiedCell, setCopiedCell] = useState<CopiedCell | null>(null)
 
   const daysInMonth = new Date(year, month, 0).getDate()
   const prefix = `${year}-${String(month).padStart(2, '0')}`
@@ -178,6 +184,7 @@ export default function TimesheetPage() {
         const rec = recordMap.get(recordKey(emp.id, date))
         const code = rec?.code
         const codeInfo = ATTENDANCE_CODES.find((c) => c.code === code)
+        const cellKey = `${emp.id}_${day}`
         return (
           <CellEditor
             code={code}
@@ -190,6 +197,15 @@ export default function TimesheetPage() {
             schedule={schedule}
             globalOvertimeCoeff={globalOvertimeCoeff}
             onChange={(c, h, arr, dep, oc) => handleCellChange(emp, day, c, h, arr, dep, oc)}
+            cellKey={cellKey}
+            openCellKey={openCellKey}
+            setOpenCellKey={setOpenCellKey}
+            onTabNext={() => {
+              if (day < daysInMonth) setOpenCellKey(`${emp.id}_${day + 1}`)
+              else setOpenCellKey(null)
+            }}
+            copiedCell={copiedCell}
+            onCopy={(data) => setCopiedCell(data)}
           />
         )
       }
@@ -212,7 +228,7 @@ export default function TimesheetPage() {
         let days = 0
         for (let d = 1; d <= daysInMonth; d++) {
           const rec = recordMap.get(recordKey(emp.id, `${prefix}-${String(d).padStart(2, '0')}`))
-          if (rec && (rec.code === 'Я' || rec.code === 'К')) days++
+          if (rec && rec.code === 'Я') days++
         }
         return <span style={{ fontSize: 12, fontWeight: 600 }}>{days}</span>
       }
@@ -223,7 +239,7 @@ export default function TimesheetPage() {
         let hours = 0
         for (let d = 1; d <= daysInMonth; d++) {
           const rec = recordMap.get(recordKey(emp.id, `${prefix}-${String(d).padStart(2, '0')}`))
-          if (rec && (rec.code === 'Я' || rec.code === 'К')) hours += rec.hours
+          if (rec && rec.code === 'Я') hours += rec.hours
         }
         return <span style={{ fontSize: 12, fontWeight: 600 }}>{hours.toFixed(1).replace('.0', '')}</span>
       }
@@ -241,7 +257,6 @@ export default function TimesheetPage() {
         <Button icon={<RightOutlined />} size="small" onClick={nextMonth} />
       </div>
 
-      {/* Панель официальных выходных / рабочих выходных */}
       <div style={{
         marginBottom: 12, padding: '8px 10px',
         background: '#fafafa', border: '1px solid #f0f0f0', borderRadius: 6,
@@ -306,7 +321,9 @@ export default function TimesheetPage() {
 
 function CellEditor({
   code, hours, arrivalTime, departureTime, overtimeCoeff,
-  weekend, color, schedule, globalOvertimeCoeff, onChange
+  weekend, color, schedule, globalOvertimeCoeff, onChange,
+  cellKey, openCellKey, setOpenCellKey, onTabNext,
+  copiedCell, onCopy
 }: {
   code?: AttendanceCode
   hours: number
@@ -318,44 +335,83 @@ function CellEditor({
   schedule: Schedule
   globalOvertimeCoeff: number
   onChange: (code: AttendanceCode, hours: number, arrivalTime?: string, departureTime?: string, overtimeCoeff?: number) => void
+  cellKey: string
+  openCellKey: string | null
+  setOpenCellKey: (key: string | null) => void
+  onTabNext: () => void
+  copiedCell: CopiedCell | null
+  onCopy: (data: CopiedCell) => void
 }) {
   const { t } = useLang()
-  const [open, setOpen] = useState(false)
+  const open = openCellKey === cellKey
+
   const [selCode, setSelCode] = useState<AttendanceCode>(code ?? (weekend ? 'В' : 'Я'))
-  const [arrival, setArrival] = useState<dayjs.Dayjs | null>(
-    arrivalTime ? dayjs(arrivalTime, 'HH:mm') : dayjs(schedule.start, 'HH:mm')
-  )
-  const [departure, setDeparture] = useState<dayjs.Dayjs | null>(
-    departureTime ? dayjs(departureTime, 'HH:mm') : dayjs(schedule.end, 'HH:mm')
-  )
+  const [arrH, setArrH] = useState(8)
+  const [arrM, setArrM] = useState(30)
+  const [depH, setDepH] = useState(17)
+  const [depM, setDepM] = useState(0)
 
-  const showTimes = WORKING_CODES.includes(selCode)
+  const refAH = useRef<HTMLInputElement>(null)
+  const refAM = useRef<HTMLInputElement>(null)
+  const refDH = useRef<HTMLInputElement>(null)
+  const refDM = useRef<HTMLInputElement>(null)
 
-  const calculatedHours = showTimes && arrival && departure
-    ? calcWorkedHours(arrival.format('HH:mm'), departure.format('HH:mm'), schedule.lunchStart, schedule.lunchEnd)
-    : hours
+  const showTimes = selCode === 'Я'
+
+  useEffect(() => {
+    if (open) {
+      const arr = arrivalTime ?? schedule.start
+      const dep = departureTime ?? schedule.end
+      const [ah, am] = arr.split(':').map(Number)
+      const [dh, dm] = dep.split(':').map(Number)
+      setSelCode(code ?? (weekend ? 'В' : 'Я'))
+      setArrH(ah); setArrM(am); setDepH(dh); setDepM(dm)
+      setTimeout(() => refAH.current?.focus(), 60)
+    }
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function pad2(n: number) { return String(Math.min(99, Math.max(0, n || 0))).padStart(2, '0') }
+  function getArrStr() { return `${pad2(arrH)}:${pad2(arrM)}` }
+  function getDepStr() { return `${pad2(depH)}:${pad2(depM)}` }
 
   const normHoursPerDay = calcWorkedHours(schedule.start, schedule.end, schedule.lunchStart, schedule.lunchEnd)
+  const calculatedHours = showTimes
+    ? calcWorkedHours(getArrStr(), getDepStr(), schedule.lunchStart, schedule.lunchEnd)
+    : hours
   const extraHrs = showTimes ? Math.max(0, calculatedHours - normHoursPerDay) : 0
 
   function apply() {
-    const arr = showTimes && arrival ? arrival.format('HH:mm') : undefined
-    const dep = showTimes && departure ? departure.format('HH:mm') : undefined
-    onChange(selCode, calculatedHours, arr, dep, undefined)
-    setOpen(false)
+    const arr = showTimes ? getArrStr() : undefined
+    const dep = showTimes ? getDepStr() : undefined
+    const calcH = showTimes
+      ? calcWorkedHours(getArrStr(), getDepStr(), schedule.lunchStart, schedule.lunchEnd)
+      : (hours > 0 ? hours : normHoursPerDay)
+    onChange(selCode, calcH, arr, dep, undefined)
+    setOpenCellKey(null)
   }
 
-  function handleOpenChange(o: boolean) {
-    if (o) {
-      setSelCode(code ?? (weekend ? 'В' : 'Я'))
-      setArrival(arrivalTime ? dayjs(arrivalTime, 'HH:mm') : dayjs(schedule.start, 'HH:mm'))
-      setDeparture(departureTime ? dayjs(departureTime, 'HH:mm') : dayjs(schedule.end, 'HH:mm'))
+  function handleKey(e: React.KeyboardEvent, field: 'arrH' | 'arrM' | 'depH' | 'depM') {
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      if (field === 'arrH') refAM.current?.focus()
+      else if (field === 'arrM') refDH.current?.focus()
+      else if (field === 'depH') refDM.current?.focus()
+      else { apply(); onTabNext() }
+    } else if (e.key === 'Enter') {
+      apply()
+    } else if (e.key === 'Escape') {
+      setOpenCellKey(null)
     }
-    setOpen(o)
+  }
+
+  const inputStyle: React.CSSProperties = {
+    width: 42, padding: '3px 4px', fontSize: 14,
+    border: '1px solid #d9d9d9', borderRadius: 4,
+    textAlign: 'center', outline: 'none', fontFamily: 'monospace'
   }
 
   const content = (
-    <Space direction="vertical" size={8} style={{ width: 230 }}>
+    <Space direction="vertical" size={6} style={{ width: 210 }}>
       <Select
         value={selCode}
         onChange={(v) => setSelCode(v as AttendanceCode)}
@@ -368,13 +424,33 @@ function CellEditor({
 
       {showTimes && (
         <>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span style={{ fontSize: 12, width: 52, flexShrink: 0 }}>{t.timesheet.arrival}:</span>
-            <TimePicker value={arrival} onChange={setArrival} format="HH:mm" minuteStep={5} style={{ flex: 1 }} size="small" />
+            <input ref={refAH} type="number" min={0} max={23} value={arrH}
+              onChange={(e) => setArrH(parseInt(e.target.value) || 0)}
+              onKeyDown={(e) => handleKey(e, 'arrH')}
+              onFocus={(e) => e.target.select()}
+              style={inputStyle} />
+            <span style={{ fontWeight: 600 }}>:</span>
+            <input ref={refAM} type="number" min={0} max={59} value={arrM}
+              onChange={(e) => setArrM(parseInt(e.target.value) || 0)}
+              onKeyDown={(e) => handleKey(e, 'arrM')}
+              onFocus={(e) => e.target.select()}
+              style={inputStyle} />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span style={{ fontSize: 12, width: 52, flexShrink: 0 }}>{t.timesheet.departure}:</span>
-            <TimePicker value={departure} onChange={setDeparture} format="HH:mm" minuteStep={5} style={{ flex: 1 }} size="small" />
+            <input ref={refDH} type="number" min={0} max={23} value={depH}
+              onChange={(e) => setDepH(parseInt(e.target.value) || 0)}
+              onKeyDown={(e) => handleKey(e, 'depH')}
+              onFocus={(e) => e.target.select()}
+              style={inputStyle} />
+            <span style={{ fontWeight: 600 }}>:</span>
+            <input ref={refDM} type="number" min={0} max={59} value={depM}
+              onChange={(e) => setDepM(parseInt(e.target.value) || 0)}
+              onKeyDown={(e) => handleKey(e, 'depM')}
+              onFocus={(e) => e.target.select()}
+              style={inputStyle} />
           </div>
           <div style={{ fontSize: 12, color: '#555', display: 'flex', justifyContent: 'space-between' }}>
             <span>{t.timesheet.workedHours}: <b style={{ color: '#1677ff' }}>{calculatedHours}</b></span>
@@ -391,30 +467,51 @@ function CellEditor({
     </Space>
   )
 
-  // Cell display: show code + arrival→departure or just hours
+  const contextMenuItems = [
+    {
+      key: 'copy',
+      label: (t.timesheet as any).copy ?? 'Копировать',
+      disabled: !code,
+      onClick: () => { if (code) onCopy({ code, hours, arrivalTime, departureTime }) }
+    },
+    {
+      key: 'paste',
+      label: (t.timesheet as any).paste ?? 'Вставить',
+      disabled: !copiedCell,
+      onClick: () => {
+        if (copiedCell) {
+          onChange(copiedCell.code, copiedCell.hours, copiedCell.arrivalTime, copiedCell.departureTime, undefined)
+        }
+      }
+    }
+  ]
+
   const displayHours = hours > 0 ? hours : null
   const hasTimes = arrivalTime && departureTime
 
   return (
-    <Popover content={content} trigger="click" open={open} onOpenChange={handleOpenChange}>
-      <div
-        className={`timesheet-cell${weekend && !code ? ' weekend' : ''}`}
-        style={{ background: color || (code ? undefined : (weekend ? '#f5f5f5' : undefined)) }}
-      >
-        {code || (weekend ? 'В' : '')}
-        {code && WORKING_CODES.includes(code) && (
-          <div style={{ fontSize: 8, color: '#666', lineHeight: 1.2, marginTop: 1 }}>
-            {hasTimes ? (
-              <>
-                <div>{arrivalTime}</div>
-                <div>{departureTime}</div>
-              </>
-            ) : displayHours ? (
-              <div>{displayHours}ч</div>
-            ) : null}
-          </div>
-        )}
-      </div>
+    <Popover content={content} trigger="click" open={open}
+      onOpenChange={(o) => setOpenCellKey(o ? cellKey : null)}>
+      <Dropdown trigger={['contextMenu']} menu={{ items: contextMenuItems }}>
+        <div
+          className={`timesheet-cell${weekend && !code ? ' weekend' : ''}`}
+          style={{ background: color || (code ? undefined : (weekend ? '#f5f5f5' : undefined)) }}
+        >
+          {code || (weekend ? 'В' : '')}
+          {code === 'Я' && (
+            <div style={{ fontSize: 8, color: '#666', lineHeight: 1.2, marginTop: 1 }}>
+              {hasTimes ? (
+                <>
+                  <div>{arrivalTime}</div>
+                  <div>{departureTime}</div>
+                </>
+              ) : displayHours ? (
+                <div>{displayHours}ч</div>
+              ) : null}
+            </div>
+          )}
+        </div>
+      </Dropdown>
     </Popover>
   )
 }

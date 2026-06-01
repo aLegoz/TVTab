@@ -17,7 +17,7 @@ export const CURRENCIES = [
 
 export type RateType = 'hourly' | 'monthly'
 
-export type AttendanceCode = 'Я' | 'В' | 'О' | 'Б' | 'К' | 'ОВ' | 'Н' | 'НН' | 'П'
+export type AttendanceCode = 'Я' | 'В' | 'О' | 'Б' | 'Н' | 'НН' | 'ОЗ'
 
 export interface Department {
   id: number
@@ -67,6 +67,8 @@ export interface SalarySummary {
   overtimeHours: number
   vacationDays: number
   sickDays: number
+  vacationPay: number
+  sickPay: number
   salary: number
 }
 
@@ -89,6 +91,8 @@ export interface SalaryDetail {
   normHours: number
   hoursPerDay: number
   globalOvertimeCoeff: number
+  vacationCoeff: number
+  sickCoeff: number
   effectiveRate: number
   effectiveRateType: RateType
   derivedHourlyRate: number
@@ -101,6 +105,8 @@ export interface SalaryDetail {
   sickDays: number
   regularSalary: number
   overtimeSalary: number
+  vacationPay: number
+  sickPay: number
   salary: number
 }
 
@@ -116,13 +122,11 @@ export interface AppSettings {
 }
 
 export const ATTENDANCE_CODES: { code: AttendanceCode; label: string; color: string }[] = [
-  { code: 'Я',  label: 'Явка',           color: '#e6f4ff' },
-  { code: 'В',  label: 'Выходной',       color: '#f5f5f5' },
-  { code: 'О',  label: 'Отпуск',         color: '#fff7e6' },
-  { code: 'Б',  label: 'Больничный',     color: '#fff1f0' },
-  { code: 'К',  label: 'Командировка',   color: '#f6ffed' },
-  { code: 'ОВ', label: 'Доп. выходной', color: '#f9f0ff' },
-  { code: 'Н',  label: 'Неявка (уваж.)', color: '#fffbe6' },
-  { code: 'НН', label: 'Прогул',        color: '#fff1f0' },
-  { code: 'П',  label: 'Праздник',      color: '#f5f5f5' },
+  { code: 'Я',  label: 'Явка',                  color: '#e6f4ff' },
+  { code: 'В',  label: 'Выходной',              color: '#f5f5f5' },
+  { code: 'О',  label: 'Отпуск',                color: '#fff7e6' },
+  { code: 'Б',  label: 'Больничный',            color: '#fff1f0' },
+  { code: 'ОЗ', label: 'Отпуск за свой счёт',  color: '#f0f0f0' },
+  { code: 'Н',  label: 'Неявка (уваж.)',        color: '#fffbe6' },
+  { code: 'НН', label: 'Прогул',               color: '#ffccc7' },
 ]

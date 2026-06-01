@@ -41,18 +41,28 @@ export default function SalaryPage() {
   const [monthCoeff, setMonthCoeff] = useState<number | null>(null)
   const [coeffInput, setCoeffInput] = useState<number>(1.5)
   const [coeffIsCustom, setCoeffIsCustom] = useState(false)
+  const [vacCoeff, setVacCoeff] = useState<number | null>(null)
+  const [vacInput, setVacInput] = useState<number>(1)
+  const [sickCoeff, setSickCoeff] = useState<number | null>(null)
+  const [sickInput, setSickInput] = useState<number>(0)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [summary, coeff] = await Promise.all([
+      const [summary, coeff, vac, sick] = await Promise.all([
         repo.getSalarySummary(year, month),
         repo.getMonthOvertimeCoeff(year, month),
+        repo.getMonthVacationCoeff(year, month),
+        repo.getMonthSickCoeff(year, month),
       ])
       setData(summary)
       setMonthCoeff(coeff)
       setCoeffInput(coeff ?? 1.5)
       setCoeffIsCustom(coeff !== null)
+      setVacCoeff(vac)
+      setVacInput(vac ?? 1)
+      setSickCoeff(sick)
+      setSickInput(sick ?? 0)
     } finally {
       setLoading(false)
     }
@@ -88,6 +98,22 @@ export default function SalaryPage() {
     setMonthCoeff(val)
     setCoeffIsCustom(true)
     message.success(t.salary.overtimeCoeffSaved)
+    load()
+  }
+
+  async function saveVacCoeff(val: number | null) {
+    if (val === null || val < 0) return
+    await repo.setMonthVacationCoeff(year, month, val)
+    setVacCoeff(val)
+    message.success((t.salary as any).vacationCoeffSaved)
+    load()
+  }
+
+  async function saveSickCoeff(val: number | null) {
+    if (val === null || val < 0) return
+    await repo.setMonthSickCoeff(year, month, val)
+    setSickCoeff(val)
+    message.success((t.salary as any).sickCoeffSaved)
     load()
   }
 
@@ -178,29 +204,42 @@ export default function SalaryPage() {
         </span>
         <Button icon={<RightOutlined />} size="small" onClick={nextMonth} />
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 16, flexWrap: 'wrap' }}>
           <Tooltip title={coeffIsCustom ? undefined : t.salary.overtimeCoeffGlobal}>
-            <span style={{ fontSize: 13, color: coeffIsCustom ? '#333' : '#999' }}>
+            <span style={{ fontSize: 12, color: coeffIsCustom ? '#333' : '#999' }}>
               {t.salary.overtimeCoeffLabel}
             </span>
           </Tooltip>
           <InputNumber
-            min={1}
-            max={5}
-            step={0.1}
-            precision={2}
+            min={1} max={5} step={0.1} precision={2}
             value={coeffInput}
             onChange={(v) => setCoeffInput(v ?? 1.5)}
             onBlur={() => saveCoeff(coeffInput)}
             onPressEnter={() => saveCoeff(coeffInput)}
-            style={{ width: 80 }}
-            size="small"
+            style={{ width: 72 }} size="small"
           />
-          {!coeffIsCustom && (
-            <Tag color="default" style={{ fontSize: 11, margin: 0 }}>
-              {t.salary.overtimeCoeffGlobal}
-            </Tag>
-          )}
+          <span style={{ fontSize: 12, color: vacCoeff !== null ? '#333' : '#999', marginLeft: 8 }}>
+            {(t.salary as any).vacationCoeffLabel}
+          </span>
+          <InputNumber
+            min={0} max={5} step={0.1} precision={2}
+            value={vacInput}
+            onChange={(v) => setVacInput(v ?? 1)}
+            onBlur={() => saveVacCoeff(vacInput)}
+            onPressEnter={() => saveVacCoeff(vacInput)}
+            style={{ width: 72 }} size="small"
+          />
+          <span style={{ fontSize: 12, color: sickCoeff !== null ? '#333' : '#999', marginLeft: 8 }}>
+            {(t.salary as any).sickCoeffLabel}
+          </span>
+          <InputNumber
+            min={0} max={5} step={0.1} precision={2}
+            value={sickInput}
+            onChange={(v) => setSickInput(v ?? 0)}
+            onBlur={() => saveSickCoeff(sickInput)}
+            onPressEnter={() => saveSickCoeff(sickInput)}
+            style={{ width: 72 }} size="small"
+          />
         </div>
 
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
@@ -308,7 +347,7 @@ function DetailContent({ detail, cur }: { detail: SalaryDetail; cur: string }) {
     {
       title: t.salary.colHoursShort, dataIndex: 'hours', key: 'h', width: 60, align: 'right' as const,
       render: (v: number, r: DayRecord) =>
-        (r.code === 'Я' || r.code === 'К') ? <b>{fmtH(v)}</b> : <span style={{ color: '#bbb' }}>—</span>
+        r.code === 'Я' ? <b>{fmtH(v)}</b> : <span style={{ color: '#bbb' }}>—</span>
     },
   ]
 
@@ -379,13 +418,29 @@ function DetailContent({ detail, cur }: { detail: SalaryDetail; cur: string }) {
             .replace('{salary}', `${fmt(detail.regularSalary)} ${cur}`)}
         </div>
 
-        {/* Переработка (если есть) */}
+        {/* Переробіток */}
         {detail.overtimeHours > 0 && (
           <div style={{ fontSize: 13, color: '#d46b08', marginBottom: 4 }}>
             {t.salary.overtimeHours} (×{detail.globalOvertimeCoeff}): {t.salary.calcFormula
               .replace('{rate}', `${rh} ${cur}`)
               .replace('{hours}', fmtH(detail.overtimeHours))
               .replace('{salary}', `${fmt(detail.overtimeSalary)} ${cur}`)}
+          </div>
+        )}
+
+        {/* Відпускні */}
+        {detail.vacationDays > 0 && (
+          <div style={{ fontSize: 13, color: '#d48b08', marginBottom: 4 }}>
+            {(t.salary as any).vacationPayLabel} ({detail.vacationDays} {t.salary.colDays.toLowerCase()}, ×{detail.vacationCoeff}):&nbsp;
+            <b>{fmt(detail.vacationPay)} {cur}</b>
+          </div>
+        )}
+
+        {/* Лікарняні */}
+        {detail.sickDays > 0 && (
+          <div style={{ fontSize: 13, color: '#cf1322', marginBottom: 4 }}>
+            {(t.salary as any).sickPayLabel} ({detail.sickDays} {t.salary.colDays.toLowerCase()}, ×{detail.sickCoeff}):&nbsp;
+            <b>{fmt(detail.sickPay)} {cur}</b>
           </div>
         )}
 

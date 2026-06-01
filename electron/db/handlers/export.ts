@@ -25,6 +25,7 @@ const I18N = {
     summarySection: 'Итого',
     workedLabel: 'Отработано', regularLabel: 'из них обычных',
     overtimeLabel: 'Переработка', vacationLabel: 'Отпуск', sickLabel: 'Больничный',
+    vacationPayLabel: 'Отпускные', sickPayLabel: 'Больничные',
     attendSection: 'Посещаемость',
     bwHint: '▪ заштрихованные = отработанные дни   ▪ тёмно-серые = выходные',
     colDate: 'Дата', colCode: 'Код', colArrival: 'Приход', colDeparture: 'Уход', colHoursShort: 'Ч.',
@@ -32,7 +33,7 @@ const I18N = {
     overtimeLineLabel: 'Переработка', toPay: 'К выплате',
     perMonth: '/мес', perHour: '/ч',
     numLocale: 'ru-RU', dateLocale: 'ru-RU',
-    codes: { 'Я':'Явка','В':'Выходной','О':'Отпуск','Б':'Больничный','К':'Командировка','ОВ':'Доп. выходной','Н':'Неявка (уваж.)','НН':'Прогул','П':'Праздник' },
+    codes: { 'Я':'Явка','В':'Выходной','О':'Отпуск','Б':'Больничный','ОЗ':'Без содержания','Н':'Неявка (уваж.)','НН':'Прогул' },
   },
   uk: {
     months: ['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'],
@@ -50,6 +51,7 @@ const I18N = {
     summarySection: 'Підсумок',
     workedLabel: 'Відпрацьовано', regularLabel: 'з них звичайних',
     overtimeLabel: 'Переробіток', vacationLabel: 'Відпустка', sickLabel: 'Лікарняний',
+    vacationPayLabel: 'Відпускні', sickPayLabel: 'Лікарняні',
     attendSection: 'Відвідуваність',
     bwHint: '▪ заштриховані = відпрацьовані дні   ▪ темно-сірі = вихідні',
     colDate: 'Дата', colCode: 'Код', colArrival: 'Прихід', colDeparture: 'Відхід', colHoursShort: 'Год.',
@@ -57,7 +59,7 @@ const I18N = {
     overtimeLineLabel: 'Переробіток', toPay: 'До виплати',
     perMonth: '/міс', perHour: '/год',
     numLocale: 'uk-UA', dateLocale: 'uk-UA',
-    codes: { 'Я':'Явка','В':'Вихідний','О':'Відпустка','Б':'Лікарняний','К':'Відрядження','ОВ':'Дод. вихідний','Н':'Неявка (поваж.)','НН':'Прогул','П':'Свято' },
+    codes: { 'Я':'Явка','В':'Вихідний','О':'Відпустка','Б':'Лікарняний','ОЗ':'Без збереження','Н':'Неявка (поваж.)','НН':'Прогул' },
   },
   en: {
     months: ['January','February','March','April','May','June','July','August','September','October','November','December'],
@@ -75,6 +77,7 @@ const I18N = {
     summarySection: 'Summary',
     workedLabel: 'Worked', regularLabel: 'of which regular',
     overtimeLabel: 'Overtime', vacationLabel: 'Vacation', sickLabel: 'Sick leave',
+    vacationPayLabel: 'Vacation pay', sickPayLabel: 'Sick pay',
     attendSection: 'Attendance',
     bwHint: '▪ shaded = worked days   ▪ dark grey = weekends',
     colDate: 'Date', colCode: 'Code', colArrival: 'Arrival', colDeparture: 'Departure', colHoursShort: 'Hrs.',
@@ -82,14 +85,13 @@ const I18N = {
     overtimeLineLabel: 'Overtime', toPay: 'Amount due',
     perMonth: '/mo', perHour: '/hr',
     numLocale: 'en-US', dateLocale: 'en-US',
-    codes: { 'Я':'Work','В':'Day off','О':'Vacation','Б':'Sick leave','К':'Business trip','ОВ':'Extra day off','Н':'Absence (excused)','НН':'No-show','П':'Holiday' },
+    codes: { 'Я':'Work','В':'Day off','О':'Vacation','Б':'Sick leave','ОЗ':'Unpaid leave','Н':'Absence (excused)','НН':'No-show' },
   },
 } as const
 
 const CODE_COLORS: Record<string, string> = {
-  'Я': '#e6f7ff', 'К': '#f6ffed', 'О': '#fff7e6',
-  'Б': '#fff1f0', 'ОВ': '#f9f0ff', 'Н': '#fffbe6',
-  'НН': '#ffccc7', 'П': '#ffd6e7', 'В': '',
+  'Я': '#e6f7ff', 'О': '#fff7e6', 'Б': '#fff1f0',
+  'ОЗ': '#f0f0f0', 'Н': '#fffbe6', 'НН': '#ffccc7', 'В': '',
 }
 
 function fmt2(n: number, locale: string) {
@@ -148,7 +150,7 @@ function buildTimesheetHtml(
       const code = rec?.code ?? (isWknd ? 'В' : '')
       const bg = CODE_COLORS[code] ?? ''
       const wkndBg = isWknd && !rec ? 'background:#f9f9f9;' : ''
-      if (rec && (rec.code === 'Я' || rec.code === 'К')) { workedDays++; workedHours += rec.hours }
+      if (rec && rec.code === 'Я') { workedDays++; workedHours += rec.hours }
       const bgStyle = bg ? `background:${bg};` : wkndBg
       const isWorked = rec && (rec.code === 'Я' || rec.code === 'К')
       const cellText = isWorked
@@ -170,9 +172,9 @@ function buildTimesheetHtml(
   }).join('')
 
   const totalDays = employees.reduce((s: number, emp: any) =>
-    s + records.filter((r: any) => r.employee_id === emp.id && (r.code === 'Я' || r.code === 'К')).length, 0)
+    s + records.filter((r: any) => r.employee_id === emp.id && r.code === 'Я').length, 0)
   const totalHours = employees.reduce((s: number, emp: any) =>
-    s + records.filter((r: any) => r.employee_id === emp.id && (r.code === 'Я' || r.code === 'К'))
+    s + records.filter((r: any) => r.employee_id === emp.id && r.code === 'Я')
       .reduce((h: number, r: any) => h + r.hours, 0), 0)
 
   return `<!DOCTYPE html>
@@ -242,17 +244,21 @@ function buildDetailHtml(empData: {
   empName: string; position: string; year: number; month: number
   normDays: number; normHours: number; hoursPerDay: number
   rateType: string; rate: number; derivedHourlyRate: number; overtimeCoeff: number
+  vacationCoeff: number; sickCoeff: number
   records: any[]; workedDays: number; regularHours: number
   overtimeHours: number; workedHours: number
   vacationDays: number; sickDays: number
-  regularSalary: number; overtimeSalary: number; salary: number
+  regularSalary: number; overtimeSalary: number
+  vacationPay: number; sickPay: number; salary: number
   colorMode: 'color' | 'bw'; lang: ExportLang
 }): string {
   const {
     companyName, currency, empName, position, year, month,
     normDays, normHours, hoursPerDay, rateType, rate, derivedHourlyRate, overtimeCoeff,
+    vacationCoeff, sickCoeff,
     records, workedDays, regularHours, overtimeHours, workedHours,
-    vacationDays, sickDays, regularSalary, overtimeSalary, salary, colorMode, lang,
+    vacationDays, sickDays, regularSalary, overtimeSalary,
+    vacationPay, sickPay, salary, colorMode, lang,
   } = empData
   const i = I18N[lang]
   const bw = colorMode === 'bw'
@@ -263,7 +269,7 @@ function buildDetailHtml(empData: {
   const attendRows = records.map((r: any, idx: number) => {
     const dow = new Date(r.date).getDay()
     const isWknd = dow === 0 || dow === 6
-    const isWorked = r.code === 'Я' || r.code === 'К'
+    const isWorked = r.code === 'Я'
     const dateStr = new Date(r.date).toLocaleDateString(i.dateLocale, { day: '2-digit', month: '2-digit', weekday: 'short' })
     const hoursCell = isWorked ? `<b>${fmtH(r.hours)}</b>` : '—'
 
@@ -396,6 +402,12 @@ ${bw ? `<div style="font-size:7.5px;color:#555;margin-bottom:3px;">${i.bwHint}</
     ${i.regularHoursLabel}: ${rh} ${currency} × ${fmtH(regularHours)} ${i.hoursUnit} = <b>${fmt2(regularSalary, i.numLocale)} ${currency}</b>
   </div>
   ${overtimeLine}
+  ${vacationDays > 0 ? `<div class="calc-line" style="${bw ? '' : 'color:#d48b08;'}">
+    ${(i as any).vacationPayLabel} (${vacationDays} ${i.daysUnit}, ×${vacationCoeff}) = <b>${fmt2(vacationPay, i.numLocale)} ${currency}</b>
+  </div>` : ''}
+  ${sickDays > 0 ? `<div class="calc-line" style="${bw ? '' : 'color:#cf1322;'}">
+    ${(i as any).sickPayLabel} (${sickDays} ${i.daysUnit}, ×${sickCoeff}) = <b>${fmt2(sickPay, i.numLocale)} ${currency}</b>
+  </div>` : ''}
   <hr style="border:none;${calcDividerStyle}margin:6px 0;"/>
   <div style="${calcTotalStyle}">${i.toPay}: ${fmt2(salary, i.numLocale)} ${currency}</div>
 </div>
@@ -446,7 +458,7 @@ export function registerExportHandlers(ipc: IpcMain): void {
         const dateStr = `${prefix}-${String(d).padStart(2, '0')}`
         const rec = empRecords.find((r: any) => r.date === dateStr)
         if (rec) {
-          const isWorked = rec.code === 'Я' || rec.code === 'К'
+          const isWorked = rec.code === 'Я'
           days.push(isWorked ? (rec.hours % 1 === 0 ? rec.hours : rec.hours.toFixed(1)) : rec.code)
           if (isWorked) { workedDays++; workedHours += rec.hours }
         } else {
@@ -465,9 +477,9 @@ export function registerExportHandlers(ipc: IpcMain): void {
     const totalsRow = ws.addRow([
       '', i.total.replace(':', ''), '', ...Array(daysInMonth).fill(''),
       employees.reduce((s: number, emp: any) =>
-        s + records.filter((r: any) => r.employee_id === emp.id && (r.code === 'Я' || r.code === 'К')).length, 0),
+        s + records.filter((r: any) => r.employee_id === emp.id && r.code === 'Я').length, 0),
       employees.reduce((s: number, emp: any) =>
-        s + records.filter((r: any) => r.employee_id === emp.id && (r.code === 'Я' || r.code === 'К'))
+        s + records.filter((r: any) => r.employee_id === emp.id && r.code === 'Я')
           .reduce((h: number, r: any) => h + r.hours, 0), 0)
     ])
     totalsRow.font = { bold: true }
@@ -542,7 +554,19 @@ export function registerExportHandlers(ipc: IpcMain): void {
     const rows = all('SELECT * FROM timesheet_records WHERE employee_id=? AND date LIKE ? ORDER BY date',
       [employeeId, prefix + '%']) as any[]
 
-    const workedRecs = rows.filter((r: any) => r.code === 'Я' || r.code === 'К')
+    const vacationCoeffRow2 = (all(
+      'SELECT value FROM month_settings WHERE year=? AND month=? AND key=?',
+      [year, month, 'vacationCoeff']
+    ) as any[])[0]
+    const vacationCoeff = vacationCoeffRow2 ? Number(vacationCoeffRow2.value) : 1
+
+    const sickCoeffRow2 = (all(
+      'SELECT value FROM month_settings WHERE year=? AND month=? AND key=?',
+      [year, month, 'sickCoeff']
+    ) as any[])[0]
+    const sickCoeff = sickCoeffRow2 ? Number(sickCoeffRow2.value) : 0
+
+    const workedRecs = rows.filter((r: any) => r.code === 'Я')
     const vacationDays = rows.filter((r: any) => r.code === 'О').length
     const sickDays = rows.filter((r: any) => r.code === 'Б').length
 
@@ -552,7 +576,10 @@ export function registerExportHandlers(ipc: IpcMain): void {
     const regularHours = totalWorked - overtimeHours
     const regularSalary = Math.round(derivedHourlyRate * regularHours * 100) / 100
     const overtimeSalary = Math.round(derivedHourlyRate * overtimeCoeff * overtimeHours * 100) / 100
-    const salary = Math.round((regularSalary + overtimeSalary) * 100) / 100
+    const perDayRate = derivedHourlyRate * hoursPerDay
+    const vacationPay = Math.round(perDayRate * vacationDays * vacationCoeff * 100) / 100
+    const sickPay = Math.round(perDayRate * sickDays * sickCoeff * 100) / 100
+    const salary = Math.round((regularSalary + overtimeSalary + vacationPay + sickPay) * 100) / 100
 
     const companyId = getCurrentCompanyId()
     const companyEntry = listCompanies().find((c) => c.id === companyId)
@@ -571,12 +598,13 @@ export function registerExportHandlers(ipc: IpcMain): void {
       empName: emp.full_name, position: emp.position,
       year, month, normDays, normHours, hoursPerDay,
       rateType, rate, derivedHourlyRate: Math.round(derivedHourlyRate * 100) / 100, overtimeCoeff,
+      vacationCoeff, sickCoeff,
       records: rows,
       workedDays: workedRecs.length,
       regularHours: Math.round(regularHours * 100) / 100,
       overtimeHours: Math.round(overtimeHours * 100) / 100,
       workedHours: Math.round(totalWorked * 100) / 100,
-      vacationDays, sickDays, regularSalary, overtimeSalary, salary,
+      vacationDays, sickDays, regularSalary, overtimeSalary, vacationPay, sickPay, salary,
       colorMode, lang,
     })
 

@@ -148,9 +148,22 @@ export class LocalRepository implements IRepository {
     const val = await this.api.monthSettings.get(year, month, 'overtimeCoeff')
     return val !== null ? Number(val) : null
   }
-
   async setMonthOvertimeCoeff(year: number, month: number, coeff: number): Promise<void> {
     await this.api.monthSettings.set(year, month, 'overtimeCoeff', String(coeff))
+  }
+  async getMonthVacationCoeff(year: number, month: number): Promise<number | null> {
+    const val = await this.api.monthSettings.get(year, month, 'vacationCoeff')
+    return val !== null ? Number(val) : null
+  }
+  async setMonthVacationCoeff(year: number, month: number, coeff: number): Promise<void> {
+    await this.api.monthSettings.set(year, month, 'vacationCoeff', String(coeff))
+  }
+  async getMonthSickCoeff(year: number, month: number): Promise<number | null> {
+    const val = await this.api.monthSettings.get(year, month, 'sickCoeff')
+    return val !== null ? Number(val) : null
+  }
+  async setMonthSickCoeff(year: number, month: number, coeff: number): Promise<void> {
+    await this.api.monthSettings.set(year, month, 'sickCoeff', String(coeff))
   }
 
   async getSalarySummary(year: number, month: number): Promise<SalarySummary[]> {

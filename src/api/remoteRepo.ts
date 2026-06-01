@@ -46,6 +46,18 @@ export class RemoteRepository implements IRepository {
     this.req<void>(`/month-settings/${year}/${month}/overtimeCoeff`, {
       method: 'PUT', body: JSON.stringify({ value: coeff })
     })
+  getMonthVacationCoeff = (year: number, month: number) =>
+    this.req<number | null>(`/month-settings/${year}/${month}/vacationCoeff`)
+  setMonthVacationCoeff = (year: number, month: number, coeff: number) =>
+    this.req<void>(`/month-settings/${year}/${month}/vacationCoeff`, {
+      method: 'PUT', body: JSON.stringify({ value: coeff })
+    })
+  getMonthSickCoeff = (year: number, month: number) =>
+    this.req<number | null>(`/month-settings/${year}/${month}/sickCoeff`)
+  setMonthSickCoeff = (year: number, month: number, coeff: number) =>
+    this.req<void>(`/month-settings/${year}/${month}/sickCoeff`, {
+      method: 'PUT', body: JSON.stringify({ value: coeff })
+    })
 
   getSalarySummary = (year: number, month: number) => this.req<SalarySummary[]>(`/salary/${year}/${month}`)
   getSalaryDetail = (employeeId: number, year: number, month: number) =>

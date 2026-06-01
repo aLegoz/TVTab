@@ -33,6 +33,10 @@ export interface IRepository {
   // Month-specific settings
   getMonthOvertimeCoeff(year: number, month: number): Promise<number | null>
   setMonthOvertimeCoeff(year: number, month: number, coeff: number): Promise<void>
+  getMonthVacationCoeff(year: number, month: number): Promise<number | null>
+  setMonthVacationCoeff(year: number, month: number, coeff: number): Promise<void>
+  getMonthSickCoeff(year: number, month: number): Promise<number | null>
+  setMonthSickCoeff(year: number, month: number, coeff: number): Promise<void>
 
   // Salary
   getSalarySummary(year: number, month: number): Promise<SalarySummary[]>
