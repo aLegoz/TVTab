@@ -11,6 +11,11 @@
     {
       "from": "node_modules/sql.js/dist/sql-wasm.wasm",
       "to": "sql-wasm.wasm"
+    },
+    {
+      "from": "../dist/web",
+      "to": "web",
+      "filter": ["**/*"]
     }
   ],
   "win": {
