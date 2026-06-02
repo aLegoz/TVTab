@@ -1,6 +1,6 @@
 {
   "name": "tvtab",
-  "version": "1.7.1",
+  "version": "1.8.0",
   "description": "Табель учёта рабочего времени и расчёта зарплат",
   "author": "a.chekerda@gmail.com",
   "main": "./out/main/index.js",
@@ -9,6 +9,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "build:win": "npm run build && electron-builder --win",
+    "build:web": "vite build --config vite.web.config.ts",
     "postinstall": "electron-builder install-app-deps || true"
   },
   "dependencies": {

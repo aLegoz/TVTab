@@ -10,6 +10,7 @@ import {
 import type { Company } from '../../types'
 import { CURRENCIES } from '../../types'
 import { useLang } from '../../i18n/LangContext'
+import { IS_WEB } from '../../env'
 import dayjs from 'dayjs'
 
 const { Title, Text } = Typography
@@ -37,6 +38,10 @@ export default function CompanySelectPage({ onSelect }: Props) {
 
   // Read saved settings on mount — use localStorage to avoid IPC before company DB is open
   useEffect(() => {
+    if (IS_WEB) {
+      connectToServer(window.location.origin)
+      return
+    }
     const savedMode = localStorage.getItem('tvtab.mode') as 'local' | 'remote' | null
     const savedUrl = localStorage.getItem('tvtab.serverUrl') ?? ''
     if (savedMode === null) {
@@ -179,7 +184,7 @@ export default function CompanySelectPage({ onSelect }: Props) {
     }
   }
 
-  const showCompanies = mode === 'local' || (mode === 'remote' && connected)
+  const showCompanies = IS_WEB ? connected : (mode === 'local' || (mode === 'remote' && connected))
 
   return (
     <div style={{
@@ -193,8 +198,15 @@ export default function CompanySelectPage({ onSelect }: Props) {
           <Text type="secondary">{t.company.subtitle}</Text>
         </div>
 
-        {/* Mode selector */}
-        <Card size="small" style={{ marginBottom: 16 }}>
+        {/* Mode selector — hidden in web/browser mode */}
+        {IS_WEB && connected && (
+          <Card size="small" style={{ marginBottom: 16 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              ✓ {serverUrl}
+            </Text>
+          </Card>
+        )}
+        {!IS_WEB && <Card size="small" style={{ marginBottom: 16 }}>
           <Radio.Group value={mode} onChange={(e) => handleModeChange(e.target.value)}>
             <Radio value="local">{t.settings.local}</Radio>
             <Radio value="remote">{t.settings.remote}</Radio>
@@ -243,7 +255,7 @@ export default function CompanySelectPage({ onSelect }: Props) {
               )}
             </>
           )}
-        </Card>
+        </Card>}
 
         {/* Companies list */}
         {showCompanies && (
