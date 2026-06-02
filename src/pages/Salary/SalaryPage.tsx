@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Table, Button, Typography, Spin, message, Tag, Drawer,
-  Descriptions, Divider, Space, Statistic, InputNumber, Tooltip, Dropdown, DatePicker
+  Descriptions, Divider, Space, Statistic, InputNumber, Tooltip, DatePicker
 } from 'antd'
 import {
   FileExcelOutlined, FilePdfOutlined,
@@ -148,11 +148,11 @@ export default function SalaryPage() {
     }
   }
 
-  async function exportDetail(colorMode: 'color' | 'bw') {
+  async function exportDetail() {
     if (!detail) return
     setDetailExporting(true)
     try {
-      const path = await repo.exportDetailToPdf(detail.employee.id, year, month, colorMode, lang)
+      const path = await repo.exportDetailToPdf(detail.employee.id, year, month, 'bw', lang)
       if (path) message.success(`PDF: ${path}`)
     } catch (e: any) { message.error(e.message) }
     finally { setDetailExporting(false) }
@@ -403,20 +403,15 @@ export default function SalaryPage() {
             : t.salary.detailTitle
         }
         extra={
-          <Dropdown
-            disabled={!detail || detailExporting}
-            menu={{
-              items: [
-                { key: 'color', label: '🎨 Кольоровий PDF', onClick: () => exportDetail('color') },
-                { key: 'bw',    label: '⬛ Чорно-білий PDF', onClick: () => exportDetail('bw') },
-              ]
-            }}
-            trigger={['click']}
+          <Button
+            icon={<DownloadOutlined />}
+            size="small"
+            loading={detailExporting}
+            disabled={!detail}
+            onClick={exportDetail}
           >
-            <Button icon={<DownloadOutlined />} size="small" loading={detailExporting}>
-              PDF
-            </Button>
-          </Dropdown>
+            PDF
+          </Button>
         }
         open={detailOpen}
         onClose={() => setDetailOpen(false)}

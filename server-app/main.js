@@ -708,22 +708,92 @@ function buildExpressApp() {
     const currency = companyRow?.currency??'₴'
     const MONTHS = {ru:['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'],uk:['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'],en:['January','February','March','April','May','June','July','August','September','October','November','December']}
     const months = MONTHS[lang]||MONTHS.uk
-    const bw = colorMode==='bw'
+    const cur = companyRow?.currency??'₴'
     const fmt2 = n=>n.toLocaleString('uk-UA',{minimumFractionDigits:2,maximumFractionDigits:2})
     const fmtH = n=>Number.isInteger(n)?String(n):n.toFixed(2).replace(/\.?0+$/,'')
-    const CODE_COLORS = {'Я':'#e6f7ff','О':'#fff7e6','Б':'#fff1f0','ОЗ':'#f0f0f0','Н':'#fffbe6','НН':'#ffccc7'}
-    const attendRows = s.rows.map((r,idx)=>{
-      const isW=r.code==='Я', dow=new Date(r.date).getDay(), iswknd=dow===0||dow===6
-      const ds=new Date(r.date).toLocaleDateString('uk-UA',{day:'2-digit',month:'2-digit',weekday:'short'})
-      let rs=''
-      if(bw){if(isW)rs=idx%2===0?'background:#f0f0f0;':'background:#e4e4e4;';else if(iswknd)rs='background:#d8d8d8;color:#555;';else rs=idx%2===1?'background:#fafafa;':'';}
-      else{const bg=CODE_COLORS[r.code]??'';rs=bg?`background:${bg};`:(iswknd&&!bg?'background:#f9f9f9;':(idx%2===1?'background:#fafafa;':''));}
-      return `<tr style="${rs}"><td>${idx+1}</td><td style="text-align:left">${ds}</td><td><b>${r.code}</b></td><td>${r.arrival_time??'—'}</td><td>${r.departure_time??'—'}</td><td style="text-align:right">${isW?`<b>${fmtH(r.hours)}</b>`:'—'}</td></tr>`
-    }).join('')
-    const otLine = s.overtimeHours>0?`<div style="margin-bottom:4px;font-size:8.5px;${bw?'font-style:italic;':'color:#d46b08;'}">Переробіток (×${overtimeCoeff}): ${fmt2(s.derivedHourlyRate)} × ${fmtH(s.overtimeHours)} год = <b>${fmt2(s.overtimeSalary)}</b></div>`:''
-    const vacLine = s.vacationDays>0?`<div style="margin-bottom:4px;font-size:8.5px;${bw?'':'color:#d48b08;'}">Відпускні (${s.vacationDays} дн., ×${s.vacationCoeff}) = <b>${fmt2(s.vacationPay)}</b></div>`:''
-    const sickLine = s.sickDays>0?`<div style="margin-bottom:4px;font-size:8.5px;${bw?'':'color:#cf1322;'}">Лікарняні (${s.sickDays} дн., ×${s.sickCoeff}) = <b>${fmt2(s.sickPay)}</b></div>`:''
-    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:Arial,sans-serif;font-size:8.5px;color:#222;}table{width:100%;border-collapse:collapse;margin-bottom:10px;}th,td{border:1px solid ${bw?'#888':'#ccc'};padding:2px 4px;text-align:center;}th{background:${bw?'#d0d0d0':'#efefef'};font-size:8px;font-weight:bold;}td{font-size:8px;}.calc{${bw?'border:2px solid #333;':'background:#f6ffed;border:1px solid #b7eb8f;'}border-radius:4px;padding:8px 12px;}@page{size:A4 portrait;margin:8mm 10mm;}@media print{*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}}</style></head><body><div style="text-align:center;border-bottom:2px solid #333;padding-bottom:7px;margin-bottom:10px;"><h1 style="font-size:13px">${companyRow?.name??'TVTab'}</h1><div style="font-size:10px;color:#555">Розрахунок зарплати — ${months[m-1]} ${year}</div><div style="font-size:11px;font-weight:600;margin-top:3px">${s.emp.full_name}${s.emp.position?` — ${s.emp.position}`:''}</div></div><table><thead><tr><th style="width:20px">№</th><th>Дата</th><th style="width:28px">Код</th><th style="width:42px">Прихід</th><th style="width:42px">Відхід</th><th style="width:36px">Год.</th></tr></thead><tbody>${attendRows}</tbody></table><div class="calc"><div style="font-size:8px;font-weight:bold;text-transform:uppercase;border-bottom:${bw?'2px solid #333':'1px solid #ddd'};padding-bottom:2px;margin-bottom:6px">Розрахунок</div><div style="margin-bottom:4px;font-size:8.5px">Звичайні години: ${fmt2(s.derivedHourlyRate)} × ${fmtH(s.regularHours)} год = <b>${fmt2(s.regularSalary)}</b></div>${otLine}${vacLine}${sickLine}<hr style="border:none;border-top:${bw?'2px solid #333':'1px solid #b7eb8f'};margin:6px 0;"/><div style="font-size:16px;font-weight:bold;${bw?'text-decoration:underline;':'color:#1677ff;'}">До виплати: ${fmt2(s.salary)} ${currency}</div></div><script>window.print()</script></body></html>`
+    const today = new Date().toLocaleDateString('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'})
+
+    // advance
+    const advRow = dbGet(db,'SELECT amount,given_date FROM advances WHERE employee_id=? AND year=? AND month=?',[s.emp.id,y,m])
+    const advance = Math.round((advRow?.amount||0)*100)/100
+    const toPay = Math.round((s.salary-advance)*100)/100
+
+    // full calendar attendance
+    const daysInMonth = new Date(y,m,0).getDate()
+    const holSet = new Set(holidays), wdSet = new Set(workdays2)
+    const recMap = {}; for (const r of s.rows) recMap[r.date] = r
+    const DOW = ['Нд','Пн','Вт','Ср','Чт','Пт','Сб']
+    const CODE_LABELS = {'Я':'робочий день','О':'відпустка','Б':'лікарняний','ОЗ':'відпустка за свій рахунок','Н':'прогул','НН':"нез'ясована відсутність",'В':'вихідний','Св':'свято'}
+    const codesUsed = new Set()
+    let attendRows = ''
+    for (let d=1; d<=daysInMonth; d++) {
+      const ds = `${prefix}-${String(d).padStart(2,'0')}`
+      const dow = new Date(y,m-1,d).getDay()
+      const isWe = (dow===0||dow===6) && !wdSet.has(ds)
+      const isHol = holSet.has(ds)
+      const rec = recMap[ds]
+      const code = rec?.code || (isWe?'В':isHol?'Св':'')
+      if (code) codesUsed.add(code)
+      const isWorked = code==='Я'
+      const cls = isWe||isHol?'we':d%2===0?'ev':''
+      attendRows += `<tr class="${cls}"><td>${d}</td><td style="text-align:left">${String(d).padStart(2,'0')}.${String(m).padStart(2,'0')} ${DOW[dow]}</td><td><b>${code||'—'}</b></td><td>${rec?.arrival_time||'—'}</td><td>${rec?.departure_time||'—'}</td><td style="text-align:right">${isWorked?`<b>${fmtH(rec.hours)}</b>`:'—'}</td></tr>`
+    }
+    const legendText = [...codesUsed].filter(c=>CODE_LABELS[c]).map(c=>`<b>${c}</b> — ${CODE_LABELS[c]}`).join(' &nbsp;|&nbsp; ')
+
+    // calculation blocks
+    const rateTypeLabel = s.rateType==='hourly'?'Погодинна':'Місячна'
+    const rateUnitLabel = s.rateType==='hourly'?`${cur}/год`:`${cur}/міс.`
+    const monthlyNote = s.rateType==='monthly'?`<div><span class="lbl">Годинна ставка (${fmt2(s.rate)} ÷ ${normHours} год): </span><b>${fmt2(s.derivedHourlyRate)} ${cur}/год</b></div>`:''
+    const otBlock = s.overtimeHours>0?`<div class="cline"><span class="desc">Понаднормові: ${fmt2(s.derivedHourlyRate)} ${cur}/год × ${fmtH(s.overtimeHours)} год × ${overtimeCoeff}</span><span class="amt">${fmt2(s.overtimeSalary)} ${cur}</span></div>`:''
+    const vacBlock = s.vacationDays>0?`<div class="cline"><span class="desc">Відпускні: ${fmt2(s.derivedHourlyRate)} ${cur}/год × ${hoursPerDay} год × ${s.vacationDays} дн. × ${s.vacationCoeff}</span><span class="amt">${fmt2(s.vacationPay)} ${cur}</span></div>`:''
+    const sickBlock = s.sickDays>0?`<div class="cline"><span class="desc">Лікарняні: ${fmt2(s.derivedHourlyRate)} ${cur}/год × ${hoursPerDay} год × ${s.sickDays} дн. × ${s.sickCoeff}</span><span class="amt">${fmt2(s.sickPay)} ${cur}</span></div>`:''
+    const advBlock = advance>0?`<div class="adv"><span>Аванс (видано ${advRow.given_date?new Date(advRow.given_date).toLocaleDateString('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}):'—'})</span><span>− ${fmt2(advance)} ${cur}</span></div>`:''
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:9px;color:#000;line-height:1.35}
+.hdr{text-align:center;border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:8px}.hdr h1{font-size:13px;letter-spacing:1px}.hdr .sub{font-size:9px;margin-top:2px;color:#333}
+.meta{display:grid;grid-template-columns:1fr 1fr;gap:2px 20px;margin-bottom:8px;font-size:9px}.lbl{color:#444}
+.sec{font-size:8px;font-weight:bold;text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid #000;padding-bottom:1px;margin:8px 0 4px}
+.info{font-size:9px;margin-bottom:4px}.info div{margin-bottom:2px}
+table{width:100%;border-collapse:collapse;font-size:8px;margin-bottom:4px}
+th{background:#d8d8d8;font-weight:bold;font-size:7.5px;text-align:center;padding:2px 3px;border:1px solid #999}
+td{border:1px solid #bbb;padding:2px 3px;text-align:center}
+tr.we td{background:#e8e8e8;color:#555}tr.ev td{background:#f6f6f6}
+.legend{font-size:7.5px;color:#555;margin-bottom:4px;line-height:1.7}
+.calc{margin-bottom:6px}.cline{display:flex;justify-content:space-between;font-size:8.5px;padding:2px 0;border-bottom:1px dotted #ccc}.cline .desc{color:#333}.cline .amt{font-weight:bold;white-space:nowrap;margin-left:8px}
+.ctotal{display:flex;justify-content:space-between;font-size:11px;font-weight:bold;border-top:2px solid #000;padding-top:4px;margin-top:4px}
+.adv{display:flex;justify-content:space-between;font-size:9px;padding:3px 6px;border:1px solid #999;background:#efefef;margin:4px 0}
+.netpay{display:flex;justify-content:space-between;font-size:14px;font-weight:bold;border-top:2px solid #000;border-bottom:2px solid #000;padding:5px 0;margin-top:4px}
+.sigs{display:grid;grid-template-columns:1fr 1fr;gap:0 30px;font-size:8px;margin-top:16px}
+.sig{border-top:1px solid #aaa;padding-top:2px;text-align:center;color:#555}
+@page{size:A4 portrait;margin:8mm 10mm}@media print{*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}
+</style></head><body>
+<div class="hdr"><h1>РОЗРАХУНКОВИЙ ЛИСТОК</h1><div class="sub">${companyRow?.name??''}</div></div>
+<div class="meta">
+<div><span class="lbl">Працівник: </span><b>${s.emp.full_name}</b></div><div><span class="lbl">Місяць: </span><b>${months[m-1]} ${year}</b></div>
+<div><span class="lbl">Посада: </span>${s.emp.position||'—'}</div><div><span class="lbl">Дата формування: </span>${today}</div>
+</div>
+<div class="sec">Умови нарахування</div>
+<div class="info">
+<div><span class="lbl">Вид оплати: </span>${rateTypeLabel}</div>
+<div><span class="lbl">Ставка: </span><b>${fmt2(s.rate)} ${rateUnitLabel}</b></div>
+${monthlyNote}
+<div><span class="lbl">Норма місяця: </span>${normDays} роб. дн. / ${normHours} год.</div>
+<div><span class="lbl">Відпрацьовано: </span>${s.workedDays} дн. / ${fmtH(s.workedHours)} год.${s.overtimeHours>0?` (у т.ч. понаднормові: ${fmtH(s.overtimeHours)} год.)`:''}${s.vacationDays>0?` &nbsp;|&nbsp; відпустка: ${s.vacationDays} дн.`:''}${s.sickDays>0?` &nbsp;|&nbsp; лікарняний: ${s.sickDays} дн.`:''}</div>
+</div>
+<div class="sec">Табель обліку часу</div>
+<table><thead><tr><th>№</th><th>Дата</th><th>Код</th><th>Прихід</th><th>Відхід</th><th>Год.</th></tr></thead><tbody>${attendRows}</tbody></table>
+<div class="legend">Позначення: ${legendText}</div>
+<div class="sec">Нарахування</div>
+<div class="calc">
+<div class="cline"><span class="desc">Основна зарплата: ${fmt2(s.derivedHourlyRate)} ${cur}/год × ${fmtH(s.regularHours)} год</span><span class="amt">${fmt2(s.regularSalary)} ${cur}</span></div>
+${otBlock}${vacBlock}${sickBlock}
+<div class="ctotal"><span>НАРАХОВАНО РАЗОМ</span><span>${fmt2(s.salary)} ${cur}</span></div>
+</div>
+${advBlock}
+<div class="netpay"><span>ДО ВИПЛАТИ</span><span>${fmt2(toPay)} ${cur}</span></div>
+<div class="sigs"><div class="sig">Бухгалтер &nbsp; _________________________________</div><div class="sig">Ознайомлений &nbsp; _________________________________</div></div>
+<script>window.print()</script></body></html>`
     res.setHeader('Content-Type','text/html; charset=utf-8'); res.send(html)
   })
 
