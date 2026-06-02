@@ -14,5 +14,5 @@
     },
     "outDir": "out"
   },
-  "include": ["src/**/*", "electron/preload/**/*"]
+  "include": ["src/**/*", "scripts/**/*"]
 }

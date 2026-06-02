@@ -16,7 +16,7 @@ import dayjs from 'dayjs'
 const { Title, Text } = Typography
 
 interface Props {
-  onSelect: (company: Company, serverUrl?: string) => void
+  onSelect: (company: Company, serverUrl: string) => void
 }
 
 export default function CompanySelectPage({ onSelect }: Props) {

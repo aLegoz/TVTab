@@ -1,37 +1,24 @@
 {
   "name": "tvtab",
-  "version": "1.9.0",
+  "version": "2.0.0",
   "description": "Табель учёта рабочего времени и расчёта зарплат",
   "author": "a.chekerda@gmail.com",
-  "main": "./out/main/index.js",
   "scripts": {
-    "start": "electron-vite preview",
-    "dev": "electron-vite dev",
-    "build": "electron-vite build",
-    "build:win": "npm run build && electron-builder --win",
     "build:web": "vite build --config vite.web.config.ts",
     "build:server-app": "npm run build:web && cd server-app && npx electron-builder --win --dir",
-    "postinstall": "electron-builder install-app-deps || true"
+    "build:linux": "npm run build:web && node scripts/package-linux.js"
   },
   "dependencies": {
-    "@electron-toolkit/preload": "^3.0.1",
-    "@electron-toolkit/utils": "^3.0.0",
     "antd": "^5.21.0",
     "dayjs": "^1.11.13",
-    "sql.js": "^1.12.0",
-    "exceljs": "^4.4.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.27.0"
   },
   "devDependencies": {
-    "@types/sql.js": "^1.4.9",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
-    "electron": "^33.2.0",
-    "electron-builder": "^25.1.8",
-    "electron-vite": "^2.3.0",
     "typescript": "^5.6.3",
     "vite": "^5.4.11"
   }

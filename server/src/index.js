@@ -983,6 +983,16 @@ app.post('/companies/:id/restore-from-audit', (req, res) => {
   res.json({ ok: true, restored, errors })
 })
 
+// ─── Static web client ────────────────────────────────────────────────────────
+const webDir = path.join(__dirname, '../../web')
+if (fs.existsSync(path.join(webDir, 'index.html'))) {
+  app.use(express.static(webDir))
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/companies')) return next()
+    res.sendFile(path.join(webDir, 'index.html'))
+  })
+}
+
 // ─── Start ─────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`TVTab server running on http://localhost:${PORT}`)

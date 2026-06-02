@@ -6,7 +6,6 @@ import {
   SettingOutlined, SwapOutlined, LeftOutlined, RightOutlined
 } from '@ant-design/icons'
 import { RepositoryProvider } from './api/RepositoryContext'
-import { LocalRepository } from './api/localRepo'
 import { RemoteRepository } from './api/remoteRepo'
 import type { IRepository } from './api/IRepository'
 import EmployeesPage from './pages/Employees/EmployeesPage'
@@ -131,15 +130,9 @@ export default function App() {
   const [company, setCompany] = useState<Company | null>(null)
   const [repo, setRepo] = useState<IRepository | null>(null)
 
-  async function handleSelect(company: Company, serverUrl?: string) {
-    if (serverUrl) {
-      setCompany(company)
-      setRepo(new RemoteRepository(`${serverUrl}/companies/${company.id}`))
-    } else {
-      await window.api.companies.open(company.id)
-      setCompany(company)
-      setRepo(new LocalRepository())
-    }
+  async function handleSelect(company: Company, serverUrl: string) {
+    setCompany(company)
+    setRepo(new RemoteRepository(`${serverUrl}/companies/${company.id}`))
   }
 
   function handleSwitch() {

@@ -1,2 +1,5 @@
-// true when running in a browser (not Electron)
-export const IS_WEB = typeof (window as any).api === 'undefined'
+export const IS_WEB = true
+
+declare global {
+  interface Window { api: any }
+}
