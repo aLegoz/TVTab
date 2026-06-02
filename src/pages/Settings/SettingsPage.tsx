@@ -69,15 +69,27 @@ export default function SettingsPage() {
       const lunchEnd = values.scheduleLunchEnd?.format('HH:mm') ?? '13:00'
       const end = values.scheduleEnd?.format('HH:mm') ?? '17:00'
       const hours = calcHours(start, lunchStart, lunchEnd, end)
+      const hoursPerDay = String(hours > 0 ? hours : 8)
+      const overtime = String(values.overtimeCoeff ?? 1.5)
 
-      await window.api.settings.set('mode', values.mode)
-      await window.api.settings.set('serverUrl', values.serverUrl || '')
-      await window.api.settings.set('workHoursPerDay', String(hours > 0 ? hours : 8))
-      await window.api.settings.set('scheduleStart', start)
-      await window.api.settings.set('scheduleLunchStart', lunchStart)
-      await window.api.settings.set('scheduleLunchEnd', lunchEnd)
-      await window.api.settings.set('scheduleEnd', end)
-      await window.api.settings.set('overtimeCoeff', String(values.overtimeCoeff ?? 1.5))
+      const isRemote = localStorage.getItem('tvtab.mode') === 'remote'
+      if (isRemote) {
+        localStorage.setItem('tvtab.workHoursPerDay', hoursPerDay)
+        localStorage.setItem('tvtab.scheduleStart', start)
+        localStorage.setItem('tvtab.scheduleLunchStart', lunchStart)
+        localStorage.setItem('tvtab.scheduleLunchEnd', lunchEnd)
+        localStorage.setItem('tvtab.scheduleEnd', end)
+        localStorage.setItem('tvtab.overtimeCoeff', overtime)
+      } else {
+        await window.api.settings.set('mode', values.mode)
+        await window.api.settings.set('serverUrl', values.serverUrl || '')
+        await window.api.settings.set('workHoursPerDay', hoursPerDay)
+        await window.api.settings.set('scheduleStart', start)
+        await window.api.settings.set('scheduleLunchStart', lunchStart)
+        await window.api.settings.set('scheduleLunchEnd', lunchEnd)
+        await window.api.settings.set('scheduleEnd', end)
+        await window.api.settings.set('overtimeCoeff', overtime)
+      }
 
       message.success(t.settings.savedMsg)
     } catch (e: any) {
@@ -143,37 +155,39 @@ export default function SettingsPage() {
           </div>
         </Card>
 
-        <Card size="small" title={t.settings.connectionMode} style={{ marginBottom: 16 }}>
-          <Form.Item name="mode" noStyle>
-            <Radio.Group onChange={(e) => setMode(e.target.value)}>
-              <Space direction="vertical">
-                <Radio value="local">
-                  <span style={{ fontWeight: 600 }}>{t.settings.local}</span>
-                  <br />
-                  <Text type="secondary" style={{ fontSize: 12 }}>{t.settings.localDesc}</Text>
-                </Radio>
-                <Radio value="remote">
-                  <span style={{ fontWeight: 600 }}>{t.settings.remote}</span>
-                  <br />
-                  <Text type="secondary" style={{ fontSize: 12 }}>{t.settings.remoteDesc}</Text>
-                </Radio>
-              </Space>
-            </Radio.Group>
-          </Form.Item>
+        {localStorage.getItem('tvtab.mode') !== 'remote' && (
+          <Card size="small" title={t.settings.connectionMode} style={{ marginBottom: 16 }}>
+            <Form.Item name="mode" noStyle>
+              <Radio.Group onChange={(e) => setMode(e.target.value)}>
+                <Space direction="vertical">
+                  <Radio value="local">
+                    <span style={{ fontWeight: 600 }}>{t.settings.local}</span>
+                    <br />
+                    <Text type="secondary" style={{ fontSize: 12 }}>{t.settings.localDesc}</Text>
+                  </Radio>
+                  <Radio value="remote">
+                    <span style={{ fontWeight: 600 }}>{t.settings.remote}</span>
+                    <br />
+                    <Text type="secondary" style={{ fontSize: 12 }}>{t.settings.remoteDesc}</Text>
+                  </Radio>
+                </Space>
+              </Radio.Group>
+            </Form.Item>
 
-          {mode === 'remote' && (
-            <>
-              <Divider style={{ margin: '12px 0' }} />
-              <Form.Item
-                name="serverUrl"
-                label={t.settings.serverUrl}
-                rules={[{ required: true, message: t.settings.serverUrlRequired }]}
-              >
-                <Input placeholder="http://192.168.1.100:3000/api" />
-              </Form.Item>
-            </>
-          )}
-        </Card>
+            {mode === 'remote' && (
+              <>
+                <Divider style={{ margin: '12px 0' }} />
+                <Form.Item
+                  name="serverUrl"
+                  label={t.settings.serverUrl}
+                  rules={[{ required: true, message: t.settings.serverUrlRequired }]}
+                >
+                  <Input placeholder="http://192.168.1.100:3000/api" />
+                </Form.Item>
+              </>
+            )}
+          </Card>
+        )}
 
         <Button type="primary" htmlType="submit" loading={loading}>
           {t.settings.save}

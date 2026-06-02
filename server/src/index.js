@@ -313,7 +313,7 @@ app.put('/companies/:id/employees/:eid', (req, res) => {
   res.json({ id: Number(req.params.eid), ...b })
 })
 app.delete('/companies/:id/employees/:eid', (req, res) => {
-  req.db.prepare('DELETE FROM employees WHERE id=?').run(req.params.eid)
+  req.db.prepare('UPDATE employees SET is_active=0 WHERE id=?').run(req.params.eid)
   broadcast(req.companyId)
   res.json({ ok: true })
 })
@@ -372,7 +372,7 @@ app.get('/companies/:id/salary-history/:empId', (req, res) => {
 })
 app.post('/companies/:id/salary-history', (req, res) => {
   const b = req.body
-  const r = req.db.prepare('INSERT INTO salary_history (employee_id,effective_from,rate_type,rate,note) VALUES (?,?,?,?,?)').run(b.employeeId, b.effectiveFrom, b.rateType, b.rate, b.note||'')
+  const r = req.db.prepare('INSERT OR REPLACE INTO salary_history (employee_id,effective_from,rate_type,rate,note) VALUES (?,?,?,?,?)').run(b.employeeId, b.effectiveFrom, b.rateType, b.rate, b.note||'')
   broadcast(req.companyId)
   res.json({ id: r.lastInsertRowid, ...b })
 })

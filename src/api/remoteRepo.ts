@@ -91,18 +91,19 @@ export class RemoteRepository implements IRepository {
   }
 
   async getSettings(): Promise<AppSettings> {
+    const ls = localStorage
     return {
       mode: 'remote',
       serverUrl: this.baseUrl,
-      workHoursPerDay: 8,
-      scheduleStart: '08:30',
-      scheduleLunchStart: '12:30',
-      scheduleLunchEnd: '13:00',
-      scheduleEnd: '17:00',
-      overtimeCoeff: 1.5,
+      workHoursPerDay: Number(ls.getItem('tvtab.workHoursPerDay') ?? 8),
+      scheduleStart: ls.getItem('tvtab.scheduleStart') ?? '08:30',
+      scheduleLunchStart: ls.getItem('tvtab.scheduleLunchStart') ?? '12:30',
+      scheduleLunchEnd: ls.getItem('tvtab.scheduleLunchEnd') ?? '13:00',
+      scheduleEnd: ls.getItem('tvtab.scheduleEnd') ?? '17:00',
+      overtimeCoeff: Number(ls.getItem('tvtab.overtimeCoeff') ?? 1.5),
     }
   }
-  async setSetting(_key: keyof AppSettings, _value: string): Promise<void> {
-    return window.api.settings.set(_key, _value)
+  async setSetting(key: keyof AppSettings, value: string): Promise<void> {
+    localStorage.setItem(`tvtab.${key}`, value)
   }
 }

@@ -384,7 +384,7 @@ function buildExpressApp() {
     res.json({ id: Number(req.params.eid), ...b })
   })
   app.delete('/companies/:id/employees/:eid', (req, res) => {
-    dbRun(req.db, 'DELETE FROM employees WHERE id=?', [req.params.eid])
+    dbRun(req.db, 'UPDATE employees SET is_active=0 WHERE id=?', [req.params.eid])
     persistCompany(req.companyId)
     res.json({ ok: true })
   })
@@ -430,7 +430,7 @@ function buildExpressApp() {
   })
   app.post('/companies/:id/salary-history', (req, res) => {
     const b = req.body
-    dbRun(req.db, 'INSERT INTO salary_history (employee_id,effective_from,rate_type,rate,note) VALUES (?,?,?,?,?)',
+    dbRun(req.db, 'INSERT OR REPLACE INTO salary_history (employee_id,effective_from,rate_type,rate,note) VALUES (?,?,?,?,?)',
       [b.employeeId, b.effectiveFrom, b.rateType, b.rate, b.note||''])
     persistCompany(req.companyId)
     const row = dbGet(req.db, 'SELECT last_insert_rowid() AS id')
