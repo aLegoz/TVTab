@@ -350,7 +350,7 @@ export default function TimesheetPage() {
 function CellEditor({
   code, hours, arrivalTime, departureTime, overtimeCoeff,
   weekend, color, schedule, globalOvertimeCoeff, onChange,
-  cellKey, onTabNext
+  cellKey, onTabNext, onDelete
 }: {
   code?: AttendanceCode
   hours: number
