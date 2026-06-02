@@ -90,6 +90,8 @@ export default function CompanySelectPage({ onSelect }: Props) {
       const data = await res.json()
       setCompanies(data)
       setConnected(true)
+      setMode('remote')
+      setServerUrl(url)
       localStorage.setItem('tvtab.mode', 'remote')
       localStorage.setItem('tvtab.serverUrl', url)
     } catch (e: any) {
