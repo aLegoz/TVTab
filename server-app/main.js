@@ -352,23 +352,36 @@ function buildExpressApp() {
   })
 
   // ── Employees ─────────────────────────────────────────────────────────────
+  function mapEmployee(e) {
+    return {
+      id: e.id, fullName: e.full_name, position: e.position,
+      departmentId: e.department_id ?? null, departmentName: e.department_name ?? null,
+      rateType: e.rate_type, rate: e.rate, hiredDate: e.hired_date ?? null,
+      isActive: e.is_active === 1
+    }
+  }
+
   app.get('/companies/:id/employees', (req, res) => {
-    res.json(dbAll(req.db, `SELECT e.*, d.name AS department_name FROM employees e LEFT JOIN departments d ON d.id=e.department_id ORDER BY e.full_name`))
+    res.json(dbAll(req.db, `SELECT e.*, d.name AS department_name FROM employees e LEFT JOIN departments d ON d.id=e.department_id ORDER BY e.full_name`).map(mapEmployee))
   })
   app.post('/companies/:id/employees', (req, res) => {
     const b = req.body
     dbRun(req.db, 'INSERT INTO employees (full_name,position,department_id,rate_type,rate,hired_date,is_active) VALUES (?,?,?,?,?,?,1)',
       [b.fullName, b.position||'', b.departmentId||null, b.rateType, b.rate, b.hiredDate||null])
-    persistCompany(req.companyId)
     const row = dbGet(req.db, 'SELECT last_insert_rowid() AS id')
-    res.json({ id: row.id, ...b, isActive: true })
+    const empId = row.id
+    const effectiveFrom = b.hiredDate || '2000-01-01'
+    dbRun(req.db, 'INSERT OR IGNORE INTO salary_history (employee_id,effective_from,rate_type,rate,note) VALUES (?,?,?,?,?)',
+      [empId, effectiveFrom, b.rateType, b.rate, ''])
+    persistCompany(req.companyId)
+    res.json({ id: empId, ...b, isActive: true })
   })
   app.put('/companies/:id/employees/:eid', (req, res) => {
     const b = req.body
     dbRun(req.db, 'UPDATE employees SET full_name=?,position=?,department_id=?,rate_type=?,rate=?,hired_date=?,is_active=? WHERE id=?',
       [b.fullName, b.position||'', b.departmentId||null, b.rateType, b.rate, b.hiredDate||null, b.isActive?1:0, req.params.eid])
     persistCompany(req.companyId)
-    res.json({ ok: true })
+    res.json({ id: Number(req.params.eid), ...b })
   })
   app.delete('/companies/:id/employees/:eid', (req, res) => {
     dbRun(req.db, 'DELETE FROM employees WHERE id=?', [req.params.eid])
@@ -379,7 +392,11 @@ function buildExpressApp() {
   // ── Timesheet ─────────────────────────────────────────────────────────────
   app.get('/companies/:id/timesheet/:year/:month', (req, res) => {
     const prefix = `${req.params.year}-${String(req.params.month).padStart(2,'0')}`
-    res.json(dbAll(req.db, 'SELECT * FROM timesheet_records WHERE date LIKE ?', [prefix+'%']))
+    res.json(dbAll(req.db, 'SELECT * FROM timesheet_records WHERE date LIKE ?', [prefix+'%']).map(r => ({
+      id: r.id, employeeId: r.employee_id, date: r.date, code: r.code,
+      hours: r.hours, arrivalTime: r.arrival_time ?? undefined,
+      departureTime: r.departure_time ?? undefined, overtimeCoeff: r.overtime_coeff ?? undefined,
+    })))
   })
   app.post('/companies/:id/timesheet/record', (req, res) => {
     const b = req.body
@@ -406,7 +423,10 @@ function buildExpressApp() {
 
   // ── Salary history ────────────────────────────────────────────────────────
   app.get('/companies/:id/salary-history/:empId', (req, res) => {
-    res.json(dbAll(req.db, 'SELECT * FROM salary_history WHERE employee_id=? ORDER BY effective_from DESC', [req.params.empId]))
+    res.json(dbAll(req.db, 'SELECT * FROM salary_history WHERE employee_id=? ORDER BY effective_from DESC', [req.params.empId]).map(r => ({
+      id: r.id, employeeId: r.employee_id, effectiveFrom: r.effective_from,
+      rateType: r.rate_type, rate: r.rate, note: r.note,
+    })))
   })
   app.post('/companies/:id/salary-history', (req, res) => {
     const b = req.body

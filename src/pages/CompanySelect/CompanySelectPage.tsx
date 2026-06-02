@@ -37,8 +37,13 @@ export default function CompanySelectPage({ onSelect }: Props) {
 
   // Read saved settings on mount — use localStorage to avoid IPC before company DB is open
   useEffect(() => {
-    const savedMode = (localStorage.getItem('tvtab.mode') ?? 'local') as 'local' | 'remote'
+    const savedMode = localStorage.getItem('tvtab.mode') as 'local' | 'remote' | null
     const savedUrl = localStorage.getItem('tvtab.serverUrl') ?? ''
+    if (savedMode === null) {
+      // First run — show mode selector, don't auto-load anything
+      setLoading(false)
+      return
+    }
     setMode(savedMode)
     setServerUrl(savedUrl)
     if (savedMode === 'local') {

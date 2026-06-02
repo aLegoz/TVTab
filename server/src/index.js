@@ -263,20 +263,46 @@ app.delete('/companies/:id/departments/:did', (req, res) => {
 })
 
 // ─── Employees ────────────────────────────────────────────────────────────────
+function mapEmployee(e) {
+  return {
+    id: e.id,
+    fullName: e.full_name,
+    position: e.position,
+    departmentId: e.department_id,
+    departmentName: e.department_name ?? null,
+    rateType: e.rate_type,
+    rate: e.rate,
+    hiredDate: e.hired_date ?? null,
+    isActive: e.is_active === 1
+  }
+}
+
 app.get('/companies/:id/employees', (req, res) => {
   res.json(req.db.prepare(`
     SELECT e.*, d.name AS department_name FROM employees e
     LEFT JOIN departments d ON d.id=e.department_id ORDER BY e.full_name
-  `).all())
+  `).all().map(mapEmployee))
 })
 app.post('/companies/:id/employees', (req, res) => {
   const b = req.body
-  const r = req.db.prepare(`
+  const db = req.db
+  const effectiveFrom = b.hiredDate || '2000-01-01'
+  const insertEmp = db.prepare(`
     INSERT INTO employees (full_name,position,department_id,rate_type,rate,hired_date,is_active)
     VALUES (?,?,?,?,?,?,1)
-  `).run(b.fullName, b.position||'', b.departmentId||null, b.rateType, b.rate, b.hiredDate||null)
+  `)
+  const insertHist = db.prepare(`
+    INSERT OR IGNORE INTO salary_history (employee_id,effective_from,rate_type,rate,note)
+    VALUES (?,?,?,?,?)
+  `)
+  let empId
+  db.transaction(() => {
+    const r = insertEmp.run(b.fullName, b.position||'', b.departmentId||null, b.rateType, b.rate, b.hiredDate||null)
+    empId = r.lastInsertRowid
+    insertHist.run(empId, effectiveFrom, b.rateType, b.rate, '')
+  })()
   broadcast(req.companyId)
-  res.json({ id: r.lastInsertRowid, ...b, isActive: true })
+  res.json({ id: empId, ...b, isActive: true })
 })
 app.put('/companies/:id/employees/:eid', (req, res) => {
   const b = req.body
@@ -284,7 +310,7 @@ app.put('/companies/:id/employees/:eid', (req, res) => {
     UPDATE employees SET full_name=?,position=?,department_id=?,rate_type=?,rate=?,hired_date=?,is_active=? WHERE id=?
   `).run(b.fullName, b.position||'', b.departmentId||null, b.rateType, b.rate, b.hiredDate||null, b.isActive?1:0, req.params.eid)
   broadcast(req.companyId)
-  res.json({ ok: true })
+  res.json({ id: Number(req.params.eid), ...b })
 })
 app.delete('/companies/:id/employees/:eid', (req, res) => {
   req.db.prepare('DELETE FROM employees WHERE id=?').run(req.params.eid)
@@ -296,7 +322,11 @@ app.delete('/companies/:id/employees/:eid', (req, res) => {
 app.get('/companies/:id/timesheet/:year/:month', (req, res) => {
   const { year, month } = req.params
   const prefix = `${year}-${String(month).padStart(2,'0')}`
-  res.json(req.db.prepare('SELECT * FROM timesheet_records WHERE date LIKE ?').all(prefix+'%'))
+  res.json(req.db.prepare('SELECT * FROM timesheet_records WHERE date LIKE ?').all(prefix+'%').map(r => ({
+    id: r.id, employeeId: r.employee_id, date: r.date, code: r.code,
+    hours: r.hours, arrivalTime: r.arrival_time ?? undefined,
+    departureTime: r.departure_time ?? undefined, overtimeCoeff: r.overtime_coeff ?? undefined,
+  })))
 })
 app.post('/companies/:id/timesheet/record', (req, res) => {
   const b = req.body
@@ -335,7 +365,10 @@ app.post('/companies/:id/timesheet/bulk', (req, res) => {
 
 // ─── Salary history ───────────────────────────────────────────────────────────
 app.get('/companies/:id/salary-history/:empId', (req, res) => {
-  res.json(req.db.prepare('SELECT * FROM salary_history WHERE employee_id=? ORDER BY effective_from DESC').all(req.params.empId))
+  res.json(req.db.prepare('SELECT * FROM salary_history WHERE employee_id=? ORDER BY effective_from DESC').all(req.params.empId).map(r => ({
+    id: r.id, employeeId: r.employee_id, effectiveFrom: r.effective_from,
+    rateType: r.rate_type, rate: r.rate, note: r.note,
+  })))
 })
 app.post('/companies/:id/salary-history', (req, res) => {
   const b = req.body
