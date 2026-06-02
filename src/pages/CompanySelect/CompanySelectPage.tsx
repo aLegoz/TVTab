@@ -35,21 +35,19 @@ export default function CompanySelectPage({ onSelect }: Props) {
   const [editTarget, setEditTarget] = useState<Company | null>(null)
   const [form] = Form.useForm()
 
-  // Read saved settings on mount
+  // Read saved settings on mount — use localStorage to avoid IPC before company DB is open
   useEffect(() => {
-    window.api.settings.getAll().then((all: any) => {
-      const savedMode = all.mode === 'remote' ? 'remote' : 'local'
-      const savedUrl = all.serverUrl || ''
-      setMode(savedMode)
-      setServerUrl(savedUrl)
-      if (savedMode === 'local') {
-        loadLocalCompanies()
-      } else if (savedUrl) {
-        connectToServer(savedUrl)
-      } else {
-        setLoading(false)
-      }
-    })
+    const savedMode = (localStorage.getItem('tvtab.mode') ?? 'local') as 'local' | 'remote'
+    const savedUrl = localStorage.getItem('tvtab.serverUrl') ?? ''
+    setMode(savedMode)
+    setServerUrl(savedUrl)
+    if (savedMode === 'local') {
+      loadLocalCompanies()
+    } else if (savedUrl) {
+      connectToServer(savedUrl)
+    } else {
+      setLoading(false)
+    }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function loadLocalCompanies() {
@@ -82,8 +80,8 @@ export default function CompanySelectPage({ onSelect }: Props) {
       const data = await res.json()
       setCompanies(data)
       setConnected(true)
-      await window.api.settings.set('mode', 'remote')
-      await window.api.settings.set('serverUrl', url)
+      localStorage.setItem('tvtab.mode', 'remote')
+      localStorage.setItem('tvtab.serverUrl', url)
     } catch (e: any) {
       message.error(`Не вдалося підключитися: ${e.message}`)
       setConnected(false)
@@ -96,13 +94,15 @@ export default function CompanySelectPage({ onSelect }: Props) {
   function disconnect() {
     setConnected(false)
     setCompanies([])
+    localStorage.setItem('tvtab.mode', 'local')
+    localStorage.removeItem('tvtab.serverUrl')
   }
 
   async function handleModeChange(newMode: 'local' | 'remote') {
     setMode(newMode)
     setConnected(false)
     setCompanies([])
-    await window.api.settings.set('mode', newMode)
+    localStorage.setItem('tvtab.mode', newMode)
     if (newMode === 'local') {
       loadLocalCompanies()
     } else {
@@ -244,8 +244,12 @@ export default function CompanySelectPage({ onSelect }: Props) {
         {showCompanies && (
           <Spin spinning={loading}>
             {!loading && companies.length === 0 && (
-              <Card style={{ textAlign: 'center', marginBottom: 16 }}>
-                <Empty description={t.company.noCompanies} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+              <Card style={{ textAlign: 'center', marginBottom: 16, padding: '8px 0' }}>
+                <Empty description={t.company.noCompanies} image={Empty.PRESENTED_IMAGE_SIMPLE}>
+                  <Button type="primary" icon={<PlusOutlined />} size="large" onClick={openCreate}>
+                    {t.company.create}
+                  </Button>
+                </Empty>
               </Card>
             )}
 
