@@ -1,6 +1,6 @@
 {
   "name": "tvtab-server-app",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "TVTab Server — tray app",
   "author": "a.chekerda@gmail.com",
   "main": "main.js",

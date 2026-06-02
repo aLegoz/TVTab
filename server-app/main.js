@@ -693,8 +693,7 @@ function buildExpressApp() {
 
   // ── Salary summary export ─────────────────────────────────────────────────
   app.get('/companies/:id/export/salary-excel/:year/:month', async (req, res) => {
-    const db = getCompanyDb(req.params.id)
-    if (!db) return res.status(404).json({error:'Company not found'})
+    const db = req.db
     const { year, month } = req.params
     const lang = req.query.lang || 'uk'
     const y = Number(year), m = Number(month)
@@ -742,8 +741,7 @@ function buildExpressApp() {
   })
 
   app.get('/companies/:id/export/salary-pdf/:year/:month', (req, res) => {
-    const db = getCompanyDb(req.params.id)
-    if (!db) return res.status(404).json({error:'Company not found'})
+    const db = req.db
     const { year, month } = req.params
     const lang = req.query.lang || 'uk'
     const y = Number(year), m = Number(month)
@@ -765,7 +763,7 @@ function buildExpressApp() {
     const sickCoeff = scR?Number(scR.value):0
     const employees = dbAll(db,'SELECT * FROM employees WHERE is_active=1 ORDER BY full_name',[])
     const records = dbAll(db,'SELECT * FROM timesheet_records WHERE date LIKE ?',[prefix+'%'])
-    const companyRow = dbGet(db,'SELECT name FROM companies WHERE id=?',[req.params.id])||{name:''}
+    const companyRow = dbGet(masterDb,'SELECT name FROM companies WHERE id=?',[req.params.id])||{name:''}
     let twD=0,twH=0,tOT=0,tvD=0,tsD=0,tSal=0,tvP=0,tsP=0,tTot=0
     const rowsHtml=employees.map((emp,idx)=>{
       const hist=dbGet(db,'SELECT rate_type,rate FROM salary_history WHERE employee_id=? AND effective_from<=? ORDER BY effective_from DESC LIMIT 1',[emp.id,monthStart])
