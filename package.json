@@ -1,6 +1,6 @@
 {
   "name": "tvtab",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Табель учёта рабочего времени и расчёта зарплат",
   "author": "a.chekerda@gmail.com",
   "main": "./out/main/index.js",
