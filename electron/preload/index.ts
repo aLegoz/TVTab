@@ -40,6 +40,8 @@ const api = {
     toPdf: (year: number, month: number, lang: string) => ipcRenderer.invoke('export:toPdf', year, month, lang),
     detailToPdf: (employeeId: number, year: number, month: number, colorMode: 'color' | 'bw', lang: string) =>
       ipcRenderer.invoke('salary:exportDetailPdf', employeeId, year, month, colorMode, lang),
+    salaryToExcel: (year: number, month: number, lang: string) => ipcRenderer.invoke('export:salaryToExcel', year, month, lang),
+    salaryToPdf: (year: number, month: number, lang: string) => ipcRenderer.invoke('export:salaryToPdf', year, month, lang),
   },
   settings: {
     get: (key: string) => ipcRenderer.invoke('settings:get', key),

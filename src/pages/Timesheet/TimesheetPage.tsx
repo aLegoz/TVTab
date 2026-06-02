@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, createContext, useContext } from 'react'
 import { Table, Select, Typography, Popover, Button, Space, Spin, message, Tooltip, Dropdown } from 'antd'
+import { FileExcelOutlined, FilePdfOutlined } from '@ant-design/icons'
 import { useRepository } from '../../api/RepositoryContext'
 import { useLang } from '../../i18n/LangContext'
 import { useMonth } from '../../i18n/MonthContext'
@@ -57,7 +58,7 @@ function useTimesheetCell() { return useContext(TimesheetCellCtx)! }
 
 export default function TimesheetPage() {
   const repo = useRepository()
-  const { t } = useLang()
+  const { t, lang } = useLang()
   const { year, month } = useMonth()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [recordMap, setRecordMap] = useState<RecordMap>(new Map())
@@ -68,6 +69,7 @@ export default function TimesheetPage() {
   })
   const [globalOvertimeCoeff, setGlobalOvertimeCoeff] = useState(1.5)
   const [loading, setLoading] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [openCellKey, setOpenCellKey] = useState<string | null>(null)
   const [copiedCell, setCopiedCell] = useState<CopiedCell | null>(null)
 
@@ -141,6 +143,36 @@ export default function TimesheetPage() {
     } catch (e: any) { message.error(e.message) }
   }
 
+  async function exportExcel() {
+    setExporting(true)
+    try {
+      const path = await repo.exportToExcel(year, month, lang)
+      if (path) message.success(`Excel: ${path}`)
+    } catch (e: any) { message.error(e.message) }
+    finally { setExporting(false) }
+  }
+
+  async function exportPdf() {
+    setExporting(true)
+    try {
+      const path = await repo.exportToPdf(year, month, lang)
+      if (path) message.success(`PDF: ${path}`)
+    } catch (e: any) { message.error(e.message) }
+    finally { setExporting(false) }
+  }
+
+  const handleDeleteCell = useCallback(async (emp: Employee, day: number) => {
+    const date = `${prefix}-${String(day).padStart(2, '0')}`
+    try {
+      await repo.deleteTimesheetRecord(emp.id, date)
+      setRecordMap((prev) => {
+        const next = new Map(prev)
+        next.delete(recordKey(emp.id, date))
+        return next
+      })
+    } catch (e: any) { message.error(e.message) }
+  }, [repo, prefix])
+
   const handleCellChange = useCallback(async (
     emp: Employee, day: number,
     code: AttendanceCode, hours: number,
@@ -202,11 +234,12 @@ export default function TimesheetPage() {
             onChange={(c, h, arr, dep, oc) => handleCellChange(emp, day, c, h, arr, dep, oc)}
             cellKey={cellKey}
             onTabNext={day < daysInMonth ? `${emp.id}_${day + 1}` : null}
+            onDelete={() => handleDeleteCell(emp, day)}
           />
         )
       }
     }
-  }), [year, month, daysInMonth, recordMap, holidays, workdays, schedule, globalOvertimeCoeff, t, handleCellChange, prefix])
+  }), [year, month, daysInMonth, recordMap, holidays, workdays, schedule, globalOvertimeCoeff, t, handleCellChange, handleDeleteCell, prefix])
 
   const columns = [
     {
@@ -245,8 +278,10 @@ export default function TimesheetPage() {
   return (
     <TimesheetCellCtx.Provider value={{ openCellKey, setOpenCellKey, copiedCell, setCopiedCell }}>
     <Spin spinning={loading}>
-      <div style={{ marginBottom: 10 }}>
-        <Title level={4} style={{ margin: 0 }}>{t.timesheet.title}</Title>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <Title level={4} style={{ margin: 0, flex: 1 }}>{t.timesheet.title}</Title>
+        <Button icon={<FileExcelOutlined />} size="small" loading={exporting} onClick={exportExcel}>Excel</Button>
+        <Button icon={<FilePdfOutlined />} size="small" loading={exporting} onClick={exportPdf}>PDF</Button>
       </div>
 
       <div style={{
@@ -329,6 +364,7 @@ function CellEditor({
   onChange: (code: AttendanceCode, hours: number, arrivalTime?: string, departureTime?: string, overtimeCoeff?: number) => void
   cellKey: string
   onTabNext: string | null
+  onDelete?: () => void
 }) {
   const { t } = useLang()
   const { openCellKey, setOpenCellKey, copiedCell, setCopiedCell } = useTimesheetCell()
@@ -497,6 +533,14 @@ function CellEditor({
           onChange(copiedCell.code, copiedCell.hours, copiedCell.arrivalTime, copiedCell.departureTime, undefined)
         }
       }
+    },
+    { type: 'divider' as const },
+    {
+      key: 'clear',
+      label: (t.timesheet as any).clear ?? 'Очистити',
+      disabled: !code,
+      danger: true,
+      onClick: () => { if (onDelete) onDelete() }
     }
   ]
 
@@ -511,7 +555,7 @@ function CellEditor({
           className={`timesheet-cell${open ? ' open' : ''}${weekend && !code ? ' weekend' : ''}`}
           style={{ background: color || (code ? undefined : (weekend ? '#f5f5f5' : undefined)) }}
         >
-          {code || (weekend ? 'В' : '')}
+          {code ? ((t.timesheet as any).codeDisplay?.[code] ?? code) : (weekend ? ((t.timesheet as any).codeDisplay?.['В'] ?? 'В') : '')}
           {code === 'Я' && (
             <div style={{ fontSize: 8, color: '#666', lineHeight: 1.2, marginTop: 1 }}>
               {hasTimes ? (

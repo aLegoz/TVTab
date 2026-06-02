@@ -46,6 +46,8 @@ export interface IRepository {
   exportToExcel(year: number, month: number, lang: Lang): Promise<string | null>
   exportToPdf(year: number, month: number, lang: Lang): Promise<string | null>
   exportDetailToPdf(employeeId: number, year: number, month: number, colorMode: 'color' | 'bw', lang: Lang): Promise<string | null>
+  exportSalaryToExcel(year: number, month: number, lang: Lang): Promise<string | null>
+  exportSalaryToPdf(year: number, month: number, lang: Lang): Promise<string | null>
 
   // Settings
   getSettings(): Promise<AppSettings>

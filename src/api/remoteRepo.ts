@@ -76,6 +76,16 @@ export class RemoteRepository implements IRepository {
     return null
   }
 
+  async exportSalaryToExcel(year: number, month: number, lang: Lang): Promise<string | null> {
+    window.open(`${this.baseUrl}/export/salary-excel/${year}/${month}?lang=${lang}`)
+    return null
+  }
+
+  async exportSalaryToPdf(year: number, month: number, lang: Lang): Promise<string | null> {
+    window.open(`${this.baseUrl}/export/salary-pdf/${year}/${month}?lang=${lang}`)
+    return null
+  }
+
   subscribeToChanges(callback: () => void): () => void {
     const es = new EventSource(`${this.baseUrl}/events`)
     let debounce: ReturnType<typeof setTimeout> | null = null

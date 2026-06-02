@@ -92,8 +92,10 @@ const ru = {
       'Я': 'Явка', 'В': 'Выходной', 'О': 'Отпуск', 'Б': 'Больничный',
       'ОЗ': 'Без содержания', 'Н': 'Неявка (уваж.)', 'НН': 'Прогул',
     } as Record<string, string>,
+    codeDisplay: {} as Record<string, string>,
     copy: 'Копировать',
     paste: 'Вставить',
+    clear: 'Очистить',
   },
   salary: {
     title: 'Зарплатная ведомость',
@@ -260,8 +262,10 @@ const uk: typeof ru = {
       'Я': 'Явка', 'В': 'Вихідний', 'О': 'Відпустка', 'Б': 'Лікарняний',
       'ОЗ': 'Без збереження', 'Н': 'Неявка (поваж.)', 'НН': 'Прогул',
     } as Record<string, string>,
+    codeDisplay: { 'Б': 'Л', 'ОЗ': 'БЗ' } as Record<string, string>,
     copy: 'Копіювати',
     paste: 'Вставити',
+    clear: 'Очистити',
   },
   salary: {
     title: 'Зарплатна відомість',
@@ -428,8 +432,10 @@ const en: typeof ru = {
       'Я': 'Work', 'В': 'Day off', 'О': 'Vacation', 'Б': 'Sick leave',
       'ОЗ': 'Unpaid leave', 'Н': 'Absence (excused)', 'НН': 'No-show',
     } as Record<string, string>,
+    codeDisplay: { 'Я': 'W', 'В': 'D', 'О': 'V', 'Б': 'S', 'ОЗ': 'U', 'Н': 'A', 'НН': 'NS' } as Record<string, string>,
     copy: 'Copy',
     paste: 'Paste',
+    clear: 'Clear',
   },
   salary: {
     title: 'Payroll',

@@ -124,8 +124,8 @@ export default function SalaryPage() {
   async function exportExcel() {
     setExporting(true)
     try {
-      const path = await repo.exportToExcel(year, month, lang)
-      if (path) message.success(`${t.salary.title}: ${path}`)
+      const path = await repo.exportSalaryToExcel(year, month, lang)
+      if (path) message.success(`Excel: ${path}`)
     } catch (e: any) { message.error(e.message) }
     finally { setExporting(false) }
   }
@@ -133,7 +133,7 @@ export default function SalaryPage() {
   async function exportPdf() {
     setExporting(true)
     try {
-      const path = await repo.exportToPdf(year, month, lang)
+      const path = await repo.exportSalaryToPdf(year, month, lang)
       if (path) message.success(`PDF: ${path}`)
     } catch (e: any) { message.error(e.message) }
     finally { setExporting(false) }

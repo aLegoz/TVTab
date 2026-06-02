@@ -13,7 +13,11 @@ const I18N = {
     months: ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'],
     weekdays: ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'],
     timesheetTitle: 'Табель учёта рабочего времени',
+    salaryTitle: 'Ведомость заработной платы',
     colName: 'ФИО', colPosition: 'Должность', colDays: 'Дн.', colHours: 'Час.',
+    colWorkedDays: 'Отраб.\nдн.', colWorkedHours: 'Отраб.\nч.', colOvertimeHours: 'Перераб.\nч.',
+    colVacationDays: 'Отпуск\nдн.', colSickDays: 'Больн.\nдн.',
+    colSalary: 'Зарплата', colVacationPay: 'Отпускные', colSickPay: 'Больничные', colTotal: 'Итого',
     total: 'ИТОГО:',
     detailTitle: 'Расчёт заработной платы',
     rateSection: 'Ставка', rateTypeLabel: 'Тип',
@@ -39,7 +43,11 @@ const I18N = {
     months: ['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'],
     weekdays: ['Нд','Пн','Вт','Ср','Чт','Пт','Сб'],
     timesheetTitle: 'Табель обліку робочого часу',
+    salaryTitle: 'Відомість заробітної плати',
     colName: 'ПІБ', colPosition: 'Посада', colDays: 'Дн.', colHours: 'Год.',
+    colWorkedDays: 'Відпрац.\nдн.', colWorkedHours: 'Відпрац.\nгод.', colOvertimeHours: 'Переробіт.\nгод.',
+    colVacationDays: 'Відпустка\nдн.', colSickDays: 'Ліка-\nрняні дн.',
+    colSalary: 'Зарплата', colVacationPay: 'Відпускні', colSickPay: 'Лікарняні', colTotal: 'Всього',
     total: 'РАЗОМ:',
     detailTitle: 'Розрахунок заробітної плати',
     rateSection: 'Ставка', rateTypeLabel: 'Тип',
@@ -65,7 +73,11 @@ const I18N = {
     months: ['January','February','March','April','May','June','July','August','September','October','November','December'],
     weekdays: ['Su','Mo','Tu','We','Th','Fr','Sa'],
     timesheetTitle: 'Timesheet',
+    salaryTitle: 'Payroll',
     colName: 'Full name', colPosition: 'Position', colDays: 'Days', colHours: 'Hours',
+    colWorkedDays: 'Worked\ndays', colWorkedHours: 'Worked\nhrs.', colOvertimeHours: 'Overtime\nhrs.',
+    colVacationDays: 'Vacation\ndays', colSickDays: 'Sick\ndays',
+    colSalary: 'Salary', colVacationPay: 'Vac. pay', colSickPay: 'Sick pay', colTotal: 'Total',
     total: 'TOTAL:',
     detailTitle: 'Salary breakdown',
     rateSection: 'Rate', rateTypeLabel: 'Type',
@@ -613,6 +625,229 @@ export function registerExportHandlers(ipc: IpcMain): void {
     const printWin = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false, contextIsolation: true } })
     await printWin.loadFile(tmpPath)
     const pdfData = await printWin.webContents.printToPDF({ printBackground: true, landscape: false, pageSize: 'A4' })
+    printWin.close()
+    await unlink(tmpPath).catch(() => {})
+
+    await writeFile(filePath, pdfData)
+    return filePath
+  })
+
+  ipc.handle('export:salaryToExcel', async (_e, year: number, month: number, lang: ExportLang = 'uk') => {
+    const i = I18N[lang]
+    const prefix = `${year}-${String(month).padStart(2, '0')}`
+    const monthStart = `${prefix}-01`
+
+    const { filePath } = await dialog.showSaveDialog({
+      defaultPath: `${i.salaryTitle}_${year}_${String(month).padStart(2, '0')}.xlsx`,
+      filters: [{ name: 'Excel', extensions: ['xlsx'] }]
+    })
+    if (!filePath) return null
+
+    const holidayDates = (all('SELECT date FROM holidays WHERE date LIKE ?', [prefix + '%']) as any[]).map((r) => r.date)
+    const workdayDates = (all('SELECT date FROM workdays WHERE date LIKE ?', [prefix + '%']) as any[]).map((r) => r.date)
+    const normDays = getWorkingDaysInMonth(year, month, holidayDates, workdayDates)
+    const hoursPerDay = Number(getSettingVal('workHoursPerDay', '8'))
+    const normHours = normDays * hoursPerDay
+
+    const overtimeCoeffRow = get<{ value: string }>('SELECT value FROM month_settings WHERE year=? AND month=? AND key=?', [year, month, 'overtimeCoeff'])
+    const globalOvertimeCoeff = overtimeCoeffRow ? Number(overtimeCoeffRow.value) : Number(getSettingVal('overtimeCoeff', '1.5'))
+    const vacationCoeffRow = get<{ value: string }>('SELECT value FROM month_settings WHERE year=? AND month=? AND key=?', [year, month, 'vacationCoeff'])
+    const vacationCoeff = vacationCoeffRow ? Number(vacationCoeffRow.value) : 1
+    const sickCoeffRow = get<{ value: string }>('SELECT value FROM month_settings WHERE year=? AND month=? AND key=?', [year, month, 'sickCoeff'])
+    const sickCoeff = sickCoeffRow ? Number(sickCoeffRow.value) : 0
+
+    const employees = all('SELECT * FROM employees WHERE is_active=1 ORDER BY full_name') as any[]
+    const records = all('SELECT * FROM timesheet_records WHERE date LIKE ?', [prefix + '%']) as any[]
+
+    const wb = new ExcelJS.Workbook()
+    const ws = wb.addWorksheet(`${i.months[month - 1]} ${year}`)
+
+    ws.mergeCells('A1', `M1`)
+    const titleCell = ws.getCell('A1')
+    titleCell.value = `${i.salaryTitle} — ${i.months[month - 1]} ${year}`
+    titleCell.font = { bold: true, size: 13 }
+    titleCell.alignment = { horizontal: 'center' }
+    ws.getRow(1).height = 22
+
+    const headerRow = ws.addRow([
+      '№', i.colName, i.colPosition,
+      i.colWorkedDays.replace('\n', ' '), i.colWorkedHours.replace('\n', ' '), i.colOvertimeHours.replace('\n', ' '),
+      i.colVacationDays.replace('\n', ' '), i.colSickDays.replace('\n', ' '),
+      i.colSalary, i.colVacationPay, i.colSickPay, i.colTotal,
+    ])
+    headerRow.font = { bold: true }
+    headerRow.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+    headerRow.height = 36
+
+    ws.getColumn(1).width = 5
+    ws.getColumn(2).width = 28
+    ws.getColumn(3).width = 18
+    for (let c = 4; c <= 12; c++) ws.getColumn(c).width = 11
+
+    let totalWorkedDays = 0, totalWorkedHours = 0, totalOvertime = 0
+    let totalVacDays = 0, totalSickDays = 0
+    let totalSalary = 0, totalVacPay = 0, totalSickPay = 0, totalTotal = 0
+
+    employees.forEach((emp: any, idx: number) => {
+      const histEntry = get<any>('SELECT rate_type, rate FROM salary_history WHERE employee_id=? AND effective_from<=? ORDER BY effective_from DESC LIMIT 1', [emp.id, monthStart])
+      const rateType = histEntry?.rate_type ?? emp.rate_type
+      const rate = histEntry?.rate ?? emp.rate
+      const derivedRate = rateType === 'hourly' ? rate : normHours > 0 ? rate / normHours : 0
+
+      const empRecs = records.filter((r: any) => r.employee_id === emp.id)
+      const workedRecs = empRecs.filter((r: any) => r.code === 'Я')
+      const vacDays = empRecs.filter((r: any) => r.code === 'О').length
+      const sickDays = empRecs.filter((r: any) => r.code === 'Б').length
+      const totalW = workedRecs.reduce((s: number, r: any) => s + r.hours, 0)
+      const overtime = Math.max(0, totalW - normHours)
+      const regular = totalW - overtime
+      const workedSal = derivedRate * regular + derivedRate * globalOvertimeCoeff * overtime
+      const perDay = derivedRate * hoursPerDay
+      const vacPay = Math.round(perDay * vacDays * vacationCoeff * 100) / 100
+      const sickPay = Math.round(perDay * sickDays * sickCoeff * 100) / 100
+      const salary = Math.round((workedSal + vacPay + sickPay) * 100) / 100
+
+      totalWorkedDays += workedRecs.length; totalWorkedHours += Math.round(totalW * 100) / 100
+      totalOvertime += Math.round(overtime * 100) / 100
+      totalVacDays += vacDays; totalSickDays += sickDays
+      totalSalary += Math.round(workedSal * 100) / 100; totalVacPay += vacPay; totalSickPay += sickPay; totalTotal += salary
+
+      const row = ws.addRow([
+        idx + 1, emp.full_name, emp.position,
+        workedRecs.length, Math.round(totalW * 100) / 100, Math.round(overtime * 100) / 100,
+        vacDays, sickDays,
+        Math.round(workedSal * 100) / 100, vacPay, sickPay, salary,
+      ])
+      row.alignment = { horizontal: 'center', vertical: 'middle' }
+      row.getCell(2).alignment = { horizontal: 'left', vertical: 'middle' }
+      row.getCell(3).alignment = { horizontal: 'left', vertical: 'middle' }
+      for (let c = 9; c <= 12; c++) {
+        row.getCell(c).numFmt = '#,##0.00'
+      }
+    })
+
+    ws.addRow([])
+    const totRow = ws.addRow([
+      '', i.total.replace(':', ''), '',
+      totalWorkedDays, Math.round(totalWorkedHours * 100) / 100, Math.round(totalOvertime * 100) / 100,
+      totalVacDays, totalSickDays,
+      Math.round(totalSalary * 100) / 100, Math.round(totalVacPay * 100) / 100,
+      Math.round(totalSickPay * 100) / 100, Math.round(totalTotal * 100) / 100,
+    ])
+    totRow.font = { bold: true }
+    totRow.alignment = { horizontal: 'center', vertical: 'middle' }
+    totRow.getCell(2).alignment = { horizontal: 'left', vertical: 'middle' }
+    for (let c = 9; c <= 12; c++) totRow.getCell(c).numFmt = '#,##0.00'
+
+    await wb.xlsx.writeFile(filePath)
+    return filePath
+  })
+
+  ipc.handle('export:salaryToPdf', async (_e, year: number, month: number, lang: ExportLang = 'uk') => {
+    const i = I18N[lang]
+    const { filePath } = await dialog.showSaveDialog({
+      defaultPath: `${i.salaryTitle}_${year}_${String(month).padStart(2, '0')}.pdf`,
+      filters: [{ name: 'PDF', extensions: ['pdf'] }]
+    })
+    if (!filePath) return null
+
+    const prefix = `${year}-${String(month).padStart(2, '0')}`
+    const monthStart = `${prefix}-01`
+    const holidayDates = (all('SELECT date FROM holidays WHERE date LIKE ?', [prefix + '%']) as any[]).map((r) => r.date)
+    const workdayDates = (all('SELECT date FROM workdays WHERE date LIKE ?', [prefix + '%']) as any[]).map((r) => r.date)
+    const normDays = getWorkingDaysInMonth(year, month, holidayDates, workdayDates)
+    const hoursPerDay = Number(getSettingVal('workHoursPerDay', '8'))
+    const normHours = normDays * hoursPerDay
+
+    const overtimeCoeffRow = get<{ value: string }>('SELECT value FROM month_settings WHERE year=? AND month=? AND key=?', [year, month, 'overtimeCoeff'])
+    const globalOvertimeCoeff = overtimeCoeffRow ? Number(overtimeCoeffRow.value) : Number(getSettingVal('overtimeCoeff', '1.5'))
+    const vacationCoeffRow = get<{ value: string }>('SELECT value FROM month_settings WHERE year=? AND month=? AND key=?', [year, month, 'vacationCoeff'])
+    const vacationCoeff = vacationCoeffRow ? Number(vacationCoeffRow.value) : 1
+    const sickCoeffRow = get<{ value: string }>('SELECT value FROM month_settings WHERE year=? AND month=? AND key=?', [year, month, 'sickCoeff'])
+    const sickCoeff = sickCoeffRow ? Number(sickCoeffRow.value) : 0
+
+    const employees = all('SELECT * FROM employees WHERE is_active=1 ORDER BY full_name') as any[]
+    const records = all('SELECT * FROM timesheet_records WHERE date LIKE ?', [prefix + '%']) as any[]
+    const companyId = getCurrentCompanyId()
+    const companyName = listCompanies().find((c) => c.id === companyId)?.name ?? 'TVTab'
+
+    interface EmpRow { name: string; position: string; workedDays: number; workedHours: number; overtime: number; vacDays: number; sickDays: number; salary: number; vacPay: number; sickPay: number; total: number }
+    let totalWorkedDays = 0, totalWorkedHours = 0, totalOvertime = 0
+    let totalVacDays = 0, totalSickDays = 0, totalSalary = 0, totalVacPay = 0, totalSickPay = 0, totalTotal = 0
+
+    const rows: EmpRow[] = employees.map((emp: any) => {
+      const histEntry = get<any>('SELECT rate_type, rate FROM salary_history WHERE employee_id=? AND effective_from<=? ORDER BY effective_from DESC LIMIT 1', [emp.id, monthStart])
+      const rateType = histEntry?.rate_type ?? emp.rate_type
+      const rate = histEntry?.rate ?? emp.rate
+      const derivedRate = rateType === 'hourly' ? rate : normHours > 0 ? rate / normHours : 0
+
+      const empRecs = records.filter((r: any) => r.employee_id === emp.id)
+      const workedRecs = empRecs.filter((r: any) => r.code === 'Я')
+      const vacDays = empRecs.filter((r: any) => r.code === 'О').length
+      const sickDays = empRecs.filter((r: any) => r.code === 'Б').length
+      const totalW = workedRecs.reduce((s: number, r: any) => s + r.hours, 0)
+      const overtime = Math.max(0, totalW - normHours)
+      const regular = totalW - overtime
+      const workedSal = derivedRate * regular + derivedRate * globalOvertimeCoeff * overtime
+      const perDay = derivedRate * hoursPerDay
+      const vacPay = Math.round(perDay * vacDays * vacationCoeff * 100) / 100
+      const sickPay = Math.round(perDay * sickDays * sickCoeff * 100) / 100
+      const total = Math.round((workedSal + vacPay + sickPay) * 100) / 100
+
+      totalWorkedDays += workedRecs.length; totalWorkedHours += totalW
+      totalOvertime += overtime; totalVacDays += vacDays; totalSickDays += sickDays
+      totalSalary += workedSal; totalVacPay += vacPay; totalSickPay += sickPay; totalTotal += total
+
+      return { name: emp.full_name, position: emp.position, workedDays: workedRecs.length, workedHours: Math.round(totalW * 100) / 100, overtime: Math.round(overtime * 100) / 100, vacDays, sickDays, salary: Math.round(workedSal * 100) / 100, vacPay, sickPay, total }
+    })
+
+    const nl = i.numLocale
+    const f2 = (n: number) => n.toLocaleString(nl, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    const rowsHtml = rows.map((r, idx) => `
+      <tr>
+        <td>${idx + 1}</td><td class="left">${r.name}</td><td class="left">${r.position}</td>
+        <td>${r.workedDays}</td><td>${f2(r.workedHours)}</td><td>${f2(r.overtime)}</td>
+        <td>${r.vacDays}</td><td>${r.sickDays}</td>
+        <td class="num">${f2(r.salary)}</td><td class="num">${f2(r.vacPay)}</td><td class="num">${f2(r.sickPay)}</td><td class="num bold">${f2(r.total)}</td>
+      </tr>`).join('')
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+  body { font-family: Arial, sans-serif; font-size: 11px; margin: 16px; }
+  h2 { font-size: 13px; margin: 0 0 4px; }
+  .sub { font-size: 11px; color: #555; margin-bottom: 10px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border: 1px solid #999; padding: 3px 5px; text-align: center; }
+  th { background: #f0f0f0; font-size: 10px; white-space: pre-line; }
+  .left { text-align: left; }
+  .num { text-align: right; }
+  .bold { font-weight: bold; }
+  .totals td { background: #f5f5f5; font-weight: bold; }
+  @media print { @page { size: A4 landscape; margin: 10mm; } }
+</style></head><body>
+<h2>${i.salaryTitle}</h2>
+<div class="sub">${companyName} — ${i.months[month - 1]} ${year}</div>
+<table>
+  <thead><tr>
+    <th>№</th><th>${i.colName}</th><th>${i.colPosition}</th>
+    <th>${i.colWorkedDays}</th><th>${i.colWorkedHours}</th><th>${i.colOvertimeHours}</th>
+    <th>${i.colVacationDays}</th><th>${i.colSickDays}</th>
+    <th>${i.colSalary}</th><th>${i.colVacationPay}</th><th>${i.colSickPay}</th><th>${i.colTotal}</th>
+  </tr></thead>
+  <tbody>${rowsHtml}</tbody>
+  <tfoot><tr class="totals">
+    <td></td><td class="left">${i.total.replace(':', '')}</td><td></td>
+    <td>${totalWorkedDays}</td><td>${f2(totalWorkedHours)}</td><td>${f2(totalOvertime)}</td>
+    <td>${totalVacDays}</td><td>${totalSickDays}</td>
+    <td class="num">${f2(totalSalary)}</td><td class="num">${f2(totalVacPay)}</td><td class="num">${f2(totalSickPay)}</td><td class="num bold">${f2(totalTotal)}</td>
+  </tr></tfoot>
+</table></body></html>`
+
+    const tmpPath = join(app.getPath('temp'), `tvtab_salary_${Date.now()}.html`)
+    await writeFile(tmpPath, html, 'utf8')
+    const printWin = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false, contextIsolation: true } })
+    await printWin.loadFile(tmpPath)
+    const pdfData = await printWin.webContents.printToPDF({ printBackground: true, landscape: true, pageSize: 'A4' })
     printWin.close()
     await unlink(tmpPath).catch(() => {})
 

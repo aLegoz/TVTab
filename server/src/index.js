@@ -748,6 +748,154 @@ th{background:${bw?'#d0d0d0':'#efefef'};font-size:8px;font-weight:bold;}td{font-
   res.send(html)
 })
 
+// ─── Salary summary export ─────────────────────────────────────────────────────
+app.get('/companies/:id/export/salary-excel/:year/:month', async (req, res) => {
+  const db = req.db
+  const { year, month } = req.params
+  const lang = req.query.lang || 'uk'
+  const y = Number(year), m = Number(month)
+  const prefix = `${year}-${String(m).padStart(2,'0')}`
+  const monthStart = `${prefix}-01`
+
+  const MONTHS = { ru:['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'], uk:['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'], en:['January','February','March','April','May','June','July','August','September','October','November','December'] }
+  const months = MONTHS[lang] || MONTHS.uk
+  const I = {
+    ru: { title:'Ведомость заработной платы', colName:'ФИО', colPos:'Должность', colWDays:'Отраб. дн.', colWHours:'Отраб. ч.', colOT:'Перераб. ч.', colVDays:'Отпуск дн.', colSDays:'Больн. дн.', colSal:'Зарплата', colVPay:'Отпускные', colSPay:'Больничные', colTotal:'Итого', total:'ИТОГО:' },
+    uk: { title:'Відомість заробітної плати', colName:'ПІБ', colPos:'Посада', colWDays:'Відпрац. дн.', colWHours:'Відпрац. год.', colOT:'Переробіт. год.', colVDays:'Відпустка дн.', colSDays:'Ліка-рняні дн.', colSal:'Зарплата', colVPay:'Відпускні', colSPay:'Лікарняні', colTotal:'Всього', total:'РАЗОМ:' },
+    en: { title:'Payroll', colName:'Full name', colPos:'Position', colWDays:'Worked days', colWHours:'Worked hrs.', colOT:'Overtime hrs.', colVDays:'Vacation days', colSDays:'Sick days', colSal:'Salary', colVPay:'Vac. pay', colSPay:'Sick pay', colTotal:'Total', total:'TOTAL:' },
+  }
+  const i = I[lang] || I.uk
+
+  const holidayDates = db.prepare('SELECT date FROM holidays WHERE date LIKE ?').all(prefix+'%').map(r=>r.date)
+  const workdayDates = db.prepare('SELECT date FROM workdays WHERE date LIKE ?').all(prefix+'%').map(r=>r.date)
+  const daysInMonth = new Date(y, m, 0).getDate()
+  const holidaySet = new Set(holidayDates), workdaySet = new Set(workdayDates)
+  let normDays = 0
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dow = new Date(y, m-1, d).getDay()
+    const ds = `${prefix}-${String(d).padStart(2,'0')}`
+    if (workdaySet.has(ds)) normDays++
+    else if (dow !== 0 && dow !== 6 && !holidaySet.has(ds)) normDays++
+  }
+  const hoursPerDay = Number((db.prepare("SELECT value FROM settings WHERE key='workHoursPerDay'").get() || {value:'8'}).value)
+  const normHours = normDays * hoursPerDay
+  const otCoeffRow = db.prepare('SELECT value FROM month_settings WHERE year=? AND month=? AND key=?').get(y, m, 'overtimeCoeff')
+  const globalOT = otCoeffRow ? Number(otCoeffRow.value) : Number((db.prepare("SELECT value FROM settings WHERE key='overtimeCoeff'").get() || {value:'1.5'}).value)
+  const vacCoeffRow = db.prepare('SELECT value FROM month_settings WHERE year=? AND month=? AND key=?').get(y, m, 'vacationCoeff')
+  const vacCoeff = vacCoeffRow ? Number(vacCoeffRow.value) : 1
+  const sickCoeffRow = db.prepare('SELECT value FROM month_settings WHERE year=? AND month=? AND key=?').get(y, m, 'sickCoeff')
+  const sickCoeff = sickCoeffRow ? Number(sickCoeffRow.value) : 0
+
+  const employees = db.prepare('SELECT * FROM employees WHERE is_active=1 ORDER BY full_name').all()
+  const records = db.prepare('SELECT * FROM timesheet_records WHERE date LIKE ?').all(prefix+'%')
+
+  const wb = new ExcelJS.Workbook()
+  const ws = wb.addWorksheet(`${months[m-1]} ${year}`)
+  ws.mergeCells('A1', 'L1')
+  const tc = ws.getCell('A1'); tc.value = `${i.title} — ${months[m-1]} ${year}`; tc.font = {bold:true,size:13}; tc.alignment = {horizontal:'center'}; ws.getRow(1).height = 22
+  const hr = ws.addRow(['№', i.colName, i.colPos, i.colWDays, i.colWHours, i.colOT, i.colVDays, i.colSDays, i.colSal, i.colVPay, i.colSPay, i.colTotal])
+  hr.font = {bold:true}; hr.alignment = {horizontal:'center',vertical:'middle',wrapText:true}; hr.height = 36
+  ws.getColumn(1).width=5; ws.getColumn(2).width=28; ws.getColumn(3).width=18
+  for (let c=4;c<=12;c++) ws.getColumn(c).width=11
+
+  let twDays=0,twHours=0,tOT=0,tvDays=0,tsDays=0,tSal=0,tvPay=0,tsPay=0,tTotal=0
+  employees.forEach((emp,idx) => {
+    const hist = db.prepare('SELECT rate_type,rate FROM salary_history WHERE employee_id=? AND effective_from<=? ORDER BY effective_from DESC LIMIT 1').get(emp.id, monthStart)
+    const rateType = hist?.rate_type || emp.rate_type, rate = hist?.rate || emp.rate
+    const dr = rateType==='hourly' ? rate : normHours>0 ? rate/normHours : 0
+    const er = records.filter(r=>r.employee_id===emp.id)
+    const wr = er.filter(r=>r.code==='Я')
+    const vd = er.filter(r=>r.code==='О').length, sd = er.filter(r=>r.code==='Б').length
+    const tw = wr.reduce((s,r)=>s+r.hours,0)
+    const ot = Math.max(0,tw-normHours), reg = tw-ot
+    const wSal = dr*reg + dr*globalOT*ot
+    const pd = dr*hoursPerDay
+    const vp = Math.round(pd*vd*vacCoeff*100)/100, sp = Math.round(pd*sd*sickCoeff*100)/100
+    const total = Math.round((wSal+vp+sp)*100)/100
+    twDays+=wr.length; twHours+=tw; tOT+=ot; tvDays+=vd; tsDays+=sd; tSal+=wSal; tvPay+=vp; tsPay+=sp; tTotal+=total
+    const row = ws.addRow([idx+1, emp.full_name, emp.position, wr.length, Math.round(tw*100)/100, Math.round(ot*100)/100, vd, sd, Math.round(wSal*100)/100, vp, sp, total])
+    row.alignment={horizontal:'center',vertical:'middle'}; row.getCell(2).alignment={horizontal:'left',vertical:'middle'}; row.getCell(3).alignment={horizontal:'left',vertical:'middle'}
+    for(let c=9;c<=12;c++) row.getCell(c).numFmt='#,##0.00'
+  })
+  ws.addRow([])
+  const tr = ws.addRow(['', i.total.replace(':',''), '', twDays, Math.round(twHours*100)/100, Math.round(tOT*100)/100, tvDays, tsDays, Math.round(tSal*100)/100, Math.round(tvPay*100)/100, Math.round(tsPay*100)/100, Math.round(tTotal*100)/100])
+  tr.font={bold:true}; tr.alignment={horizontal:'center',vertical:'middle'}; tr.getCell(2).alignment={horizontal:'left'}
+  for(let c=9;c<=12;c++) tr.getCell(c).numFmt='#,##0.00'
+
+  const buf = await wb.xlsx.writeBuffer()
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(i.title)}_${year}_${String(m).padStart(2,'0')}.xlsx"`)
+  res.send(buf)
+})
+
+app.get('/companies/:id/export/salary-pdf/:year/:month', (req, res) => {
+  const db = req.db
+  const { year, month } = req.params
+  const lang = req.query.lang || 'uk'
+  const y = Number(year), m = Number(month)
+  const prefix = `${year}-${String(m).padStart(2,'0')}`
+  const monthStart = `${prefix}-01`
+
+  const MONTHS = { ru:['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'], uk:['Січень','Лютий','Березень','Квітень','Травень','Червень','Липень','Серпень','Вересень','Жовтень','Листопад','Грудень'], en:['January','February','March','April','May','June','July','August','September','October','November','December'] }
+  const months = MONTHS[lang] || MONTHS.uk
+  const I = {
+    ru: { title:'Ведомость заработной платы', colName:'ФИО', colPos:'Должность', colWDays:'Отраб.\nдн.', colWHours:'Отраб.\nч.', colOT:'Перераб.\nч.', colVDays:'Отпуск\nдн.', colSDays:'Больн.\nдн.', colSal:'Зарплата', colVPay:'Отпускные', colSPay:'Больничные', colTotal:'Итого', total:'ИТОГО:' },
+    uk: { title:'Відомість заробітної плати', colName:'ПІБ', colPos:'Посада', colWDays:'Відпрац.\nдн.', colWHours:'Відпрац.\nгод.', colOT:'Переробіт.\nгод.', colVDays:'Відпустка\nдн.', colSDays:'Ліка-рняні\nдн.', colSal:'Зарплата', colVPay:'Відпускні', colSPay:'Лікарняні', colTotal:'Всього', total:'РАЗОМ:' },
+    en: { title:'Payroll', colName:'Full name', colPos:'Position', colWDays:'Worked\ndays', colWHours:'Worked\nhrs.', colOT:'Overtime\nhrs.', colVDays:'Vacation\ndays', colSDays:'Sick\ndays', colSal:'Salary', colVPay:'Vac. pay', colSPay:'Sick pay', colTotal:'Total', total:'TOTAL:' },
+  }
+  const i = I[lang] || I.uk
+
+  const holidayDates = db.prepare('SELECT date FROM holidays WHERE date LIKE ?').all(prefix+'%').map(r=>r.date)
+  const workdayDates = db.prepare('SELECT date FROM workdays WHERE date LIKE ?').all(prefix+'%').map(r=>r.date)
+  const daysInMonth = new Date(y, m, 0).getDate()
+  const holidaySet = new Set(holidayDates), workdaySet = new Set(workdayDates)
+  let normDays = 0
+  for (let d=1; d<=daysInMonth; d++) {
+    const dow = new Date(y,m-1,d).getDay(), ds=`${prefix}-${String(d).padStart(2,'0')}`
+    if (workdaySet.has(ds)) normDays++
+    else if (dow!==0&&dow!==6&&!holidaySet.has(ds)) normDays++
+  }
+  const hoursPerDay = Number((db.prepare("SELECT value FROM settings WHERE key='workHoursPerDay'").get()||{value:'8'}).value)
+  const normHours = normDays*hoursPerDay
+  const otCoeffRow = db.prepare('SELECT value FROM month_settings WHERE year=? AND month=? AND key=?').get(y,m,'overtimeCoeff')
+  const globalOT = otCoeffRow ? Number(otCoeffRow.value) : Number((db.prepare("SELECT value FROM settings WHERE key='overtimeCoeff'").get()||{value:'1.5'}).value)
+  const vacCoeffRow = db.prepare('SELECT value FROM month_settings WHERE year=? AND month=? AND key=?').get(y,m,'vacationCoeff')
+  const vacCoeff = vacCoeffRow ? Number(vacCoeffRow.value) : 1
+  const sickCoeffRow = db.prepare('SELECT value FROM month_settings WHERE year=? AND month=? AND key=?').get(y,m,'sickCoeff')
+  const sickCoeff = sickCoeffRow ? Number(sickCoeffRow.value) : 0
+
+  const employees = db.prepare('SELECT * FROM employees WHERE is_active=1 ORDER BY full_name').all()
+  const records = db.prepare('SELECT * FROM timesheet_records WHERE date LIKE ?').all(prefix+'%')
+  const company = db.prepare('SELECT * FROM companies WHERE id=?').get(req.params.id) || {name:''}
+
+  let twDays=0,twHours=0,tOT=0,tvDays=0,tsDays=0,tSal=0,tvPay=0,tsPay=0,tTotal=0
+  const rowsHtml = employees.map((emp,idx) => {
+    const hist = db.prepare('SELECT rate_type,rate FROM salary_history WHERE employee_id=? AND effective_from<=? ORDER BY effective_from DESC LIMIT 1').get(emp.id,monthStart)
+    const rateType = hist?.rate_type||emp.rate_type, rate = hist?.rate||emp.rate
+    const dr = rateType==='hourly'?rate:normHours>0?rate/normHours:0
+    const er = records.filter(r=>r.employee_id===emp.id)
+    const wr = er.filter(r=>r.code==='Я'), vd=er.filter(r=>r.code==='О').length, sd=er.filter(r=>r.code==='Б').length
+    const tw = wr.reduce((s,r)=>s+r.hours,0), ot=Math.max(0,tw-normHours), reg=tw-ot
+    const wSal=dr*reg+dr*globalOT*ot, pd=dr*hoursPerDay
+    const vp=Math.round(pd*vd*vacCoeff*100)/100, sp=Math.round(pd*sd*sickCoeff*100)/100
+    const total=Math.round((wSal+vp+sp)*100)/100
+    twDays+=wr.length;twHours+=tw;tOT+=ot;tvDays+=vd;tsDays+=sd;tSal+=wSal;tvPay+=vp;tsPay+=sp;tTotal+=total
+    const f2=n=>n.toLocaleString('uk-UA',{minimumFractionDigits:2,maximumFractionDigits:2})
+    return `<tr><td>${idx+1}</td><td class="left">${emp.full_name}</td><td class="left">${emp.position||''}</td><td>${wr.length}</td><td>${f2(tw)}</td><td>${f2(ot)}</td><td>${vd}</td><td>${sd}</td><td class="num">${f2(Math.round(wSal*100)/100)}</td><td class="num">${f2(vp)}</td><td class="num">${f2(sp)}</td><td class="num bold">${f2(total)}</td></tr>`
+  }).join('')
+  const f2=n=>n.toLocaleString('uk-UA',{minimumFractionDigits:2,maximumFractionDigits:2})
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;font-size:11px;margin:16px}h2{font-size:13px;margin:0 0 4px}.sub{font-size:11px;color:#555;margin-bottom:10px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #999;padding:3px 5px;text-align:center}th{background:#f0f0f0;font-size:10px;white-space:pre-line}.left{text-align:left}.num{text-align:right}.bold{font-weight:bold}.totals td{background:#f5f5f5;font-weight:bold}@media print{@page{size:A4 landscape;margin:10mm}}</style></head><body>
+<h2>${i.title}</h2><div class="sub">${company.name} — ${months[m-1]} ${year}</div>
+<table><thead><tr><th>№</th><th>${i.colName}</th><th>${i.colPos}</th><th>${i.colWDays}</th><th>${i.colWHours}</th><th>${i.colOT}</th><th>${i.colVDays}</th><th>${i.colSDays}</th><th>${i.colSal}</th><th>${i.colVPay}</th><th>${i.colSPay}</th><th>${i.colTotal}</th></tr></thead>
+<tbody>${rowsHtml}</tbody>
+<tfoot><tr class="totals"><td></td><td class="left">${i.total.replace(':','')}</td><td></td><td>${twDays}</td><td>${f2(twHours)}</td><td>${f2(tOT)}</td><td>${tvDays}</td><td>${tsDays}</td><td class="num">${f2(tSal)}</td><td class="num">${f2(tvPay)}</td><td class="num">${f2(tsPay)}</td><td class="num bold">${f2(tTotal)}</td></tr></tfoot>
+</table><script>window.print()</script></body></html>`
+
+  res.setHeader('Content-Type','text/html; charset=utf-8')
+  res.send(html)
+})
+
 // ─── Backup / Audit endpoints ─────────────────────────────────────────────────
 app.get('/companies/:id/export/json', (req, res) => {
   const db = req.db

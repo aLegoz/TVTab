@@ -186,6 +186,14 @@ export class LocalRepository implements IRepository {
     return this.api.export.detailToPdf(employeeId, year, month, colorMode, lang)
   }
 
+  async exportSalaryToExcel(year: number, month: number, lang: Lang): Promise<string | null> {
+    return this.api.export.salaryToExcel(year, month, lang)
+  }
+
+  async exportSalaryToPdf(year: number, month: number, lang: Lang): Promise<string | null> {
+    return this.api.export.salaryToPdf(year, month, lang)
+  }
+
   async getSettings(): Promise<AppSettings> {
     const all = await this.api.settings.getAll()
     return {
