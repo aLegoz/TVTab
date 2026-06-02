@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   Form, Radio, Input, InputNumber, Button, Card, Typography, message,
-  Divider, Space, Select, TimePicker, Tag
+  Divider, Space, Select, TimePicker, Tag, Tooltip
 } from 'antd'
+import { DownloadOutlined, UploadOutlined, HistoryOutlined, CopyOutlined } from '@ant-design/icons'
 import { useRepository } from '../../api/RepositoryContext'
 import { useLang } from '../../i18n/LangContext'
 import type { Lang } from '../../i18n/translations'
@@ -31,6 +32,22 @@ export default function SettingsPage() {
   const [mode, setMode] = useState<'local' | 'remote'>('local')
   const [loading, setLoading] = useState(false)
   const [scheduleHours, setScheduleHours] = useState<number>(8)
+  const [auditLogPath, setAuditLogPath] = useState<string | null>(null)
+  const [backupLoading, setBackupLoading] = useState(false)
+  const importRef = useRef<HTMLInputElement>(null)
+  const restoreRef = useRef<HTMLInputElement>(null)
+  const isRemote = localStorage.getItem('tvtab.mode') === 'remote'
+  const serverBaseUrl = (() => {
+    const url = localStorage.getItem('tvtab.serverUrl') ?? ''
+    const companyUrl = (repo as any).baseUrl ?? ''
+    return companyUrl || url
+  })()
+
+  useEffect(() => {
+    if (!isRemote) {
+      window.api.backup.getAuditLogPath().then(setAuditLogPath)
+    }
+  }, [isRemote])
 
   useEffect(() => {
     repo.getSettings().then((s: AppSettings) => {
@@ -96,6 +113,87 @@ export default function SettingsPage() {
       message.error(e.message)
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function handleExport() {
+    setBackupLoading(true)
+    try {
+      if (isRemote) {
+        const res = await fetch(`${serverBaseUrl}/export/json`)
+        const blob = await res.blob()
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url; a.download = `tvtab-backup-${new Date().toISOString().slice(0,10)}.json`; a.click()
+        URL.revokeObjectURL(url)
+      } else {
+        const path = await window.api.backup.exportToFile()
+        if (path) message.success(`Збережено: ${path}`)
+      }
+    } catch (e: any) {
+      message.error(e.message)
+    } finally {
+      setBackupLoading(false)
+    }
+  }
+
+  async function handleImportFile(file: File) {
+    setBackupLoading(true)
+    try {
+      const text = await file.text()
+      const data = JSON.parse(text)
+      if (isRemote) {
+        await fetch(`${serverBaseUrl}/import/json`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+      } else {
+        await window.api.backup.importData(data)
+      }
+      message.success('Дані відновлено з резервної копії')
+    } catch (e: any) {
+      message.error(e.message)
+    } finally {
+      setBackupLoading(false)
+      if (importRef.current) importRef.current.value = ''
+    }
+  }
+
+  async function handleRestoreAudit() {
+    setBackupLoading(true)
+    try {
+      if (isRemote) {
+        const res = await fetch(`${serverBaseUrl}/restore-from-audit`, { method: 'POST' })
+        const json = await res.json()
+        if (!res.ok) throw new Error(json.error)
+        message.success(`Відновлено ${json.restored} подій (помилок: ${json.errors})`)
+      } else {
+        const result = await window.api.backup.restoreFromAudit()
+        message.success(`Відновлено ${result.restored} подій (помилок: ${result.errors})`)
+      }
+    } catch (e: any) {
+      message.error(e.message)
+    } finally {
+      setBackupLoading(false)
+    }
+  }
+
+  async function handleRestoreFromFile(file: File) {
+    setBackupLoading(true)
+    try {
+      const text = await file.text()
+      const lines = text.trim().split('\n').filter(Boolean)
+      const entries = lines.map((l) => JSON.parse(l))
+      if (isRemote) {
+        await fetch(`${serverBaseUrl}/restore-from-audit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entries }) })
+      } else {
+        const result = await window.api.backup.restoreFromAudit()
+        message.success(`Відновлено ${result.restored} подій (помилок: ${result.errors})`)
+        return
+      }
+      message.success(`Відновлено ${entries.length} подій з файлу`)
+    } catch (e: any) {
+      message.error(e.message)
+    } finally {
+      setBackupLoading(false)
+      if (restoreRef.current) restoreRef.current.value = ''
     }
   }
 
@@ -193,6 +291,68 @@ export default function SettingsPage() {
           {t.settings.save}
         </Button>
       </Form>
+
+      {/* Hidden file inputs */}
+      <input ref={importRef} type="file" accept=".json" style={{ display: 'none' }}
+        onChange={(e) => e.target.files?.[0] && handleImportFile(e.target.files[0])} />
+      <input ref={restoreRef} type="file" accept=".jsonl,.log,.txt" style={{ display: 'none' }}
+        onChange={(e) => e.target.files?.[0] && handleRestoreFromFile(e.target.files[0])} />
+
+      <Card size="small" title="Резервне копіювання" style={{ marginTop: 16 }}>
+        <Space direction="vertical" style={{ width: '100%' }} size={12}>
+          <div>
+            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+              Знімок бази даних (JSON) — повне відновлення або перенесення на інший комп'ютер
+            </Text>
+            <Space>
+              <Button icon={<DownloadOutlined />} loading={backupLoading} onClick={handleExport}>
+                Експорт JSON
+              </Button>
+              <Button icon={<UploadOutlined />} onClick={() => importRef.current?.click()}>
+                Імпорт JSON
+              </Button>
+            </Space>
+          </div>
+
+          <Divider style={{ margin: '4px 0' }} />
+
+          <div>
+            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+              Журнал аудиту (JSONL) — покрокове відновлення всіх змін з початку
+            </Text>
+            {isRemote ? (
+              <Space>
+                <Button icon={<DownloadOutlined />} href={`${serverBaseUrl}/audit/download`} target="_blank">
+                  Завантажити журнал
+                </Button>
+                <Button icon={<HistoryOutlined />} loading={backupLoading} onClick={handleRestoreAudit}>
+                  Відновити з журналу
+                </Button>
+              </Space>
+            ) : (
+              <Space direction="vertical" size={8}>
+                {auditLogPath && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Text code style={{ fontSize: 11, wordBreak: 'break-all' }}>{auditLogPath}</Text>
+                    <Tooltip title="Скопіювати шлях">
+                      <Button size="small" icon={<CopyOutlined />}
+                        onClick={() => { navigator.clipboard.writeText(auditLogPath ?? ''); message.success('Скопійовано') }} />
+                    </Tooltip>
+                  </div>
+                )}
+                <Space>
+                  <Button icon={<HistoryOutlined />} loading={backupLoading} onClick={handleRestoreAudit}>
+                    Відновити з журналу
+                  </Button>
+                  <Button icon={<UploadOutlined />} onClick={() => restoreRef.current?.click()}>
+                    Відновити з файлу журналу
+                  </Button>
+                </Space>
+              </Space>
+            )}
+          </div>
+        </Space>
+      </Card>
     </div>
   )
 }

@@ -62,6 +62,15 @@ const api = {
   },
   network: {
     findServers: (): Promise<string[]> => ipcRenderer.invoke('network:findServers')
+  },
+  backup: {
+    getData: (): Promise<any> => ipcRenderer.invoke('backup:getData'),
+    exportToFile: (): Promise<string | null> => ipcRenderer.invoke('backup:exportToFile'),
+    importData: (data: any): Promise<{ ok: boolean }> => ipcRenderer.invoke('backup:importData', data),
+    importFromFile: (): Promise<{ ok: boolean; reason?: string }> => ipcRenderer.invoke('backup:importFromFile'),
+    getAuditLogPath: (): Promise<string | null> => ipcRenderer.invoke('backup:getAuditLogPath'),
+    restoreFromAudit: (): Promise<{ restored: number; errors: number }> => ipcRenderer.invoke('backup:restoreFromAudit'),
+    restoreFromAuditFile: (): Promise<{ ok: boolean; restored?: number; errors?: number; reason?: string }> => ipcRenderer.invoke('backup:restoreFromAuditFile'),
   }
 }
 

@@ -1,10 +1,10 @@
 import initSqlJs, { SqlJsStatic, Database as SqlDatabase } from 'sql.js'
 import { app } from 'electron'
 import { join } from 'path'
-import { readFileSync, writeFileSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, existsSync, appendFileSync } from 'fs'
 import { is } from '@electron-toolkit/utils'
 import { SCHEMA_SQL } from './schema'
-import { companyDbPath } from './companies'
+import { companyDbPath, companiesDir } from './companies'
 
 let SQL: SqlJsStatic | null = null
 let db: SqlDatabase | null = null
@@ -97,6 +97,17 @@ export function runTx(sql: string, params: any[] = []): number {
 function lastId(): number {
   const r = getDb().exec('SELECT last_insert_rowid()')
   return (r[0]?.values[0]?.[0] as number) ?? 0
+}
+
+export function auditLogPath(): string {
+  return join(companiesDir(), `${currentCompanyId}.audit.jsonl`)
+}
+
+export function appendAudit(action: string, data: Record<string, any>): void {
+  if (!currentCompanyId) return
+  try {
+    appendFileSync(auditLogPath(), JSON.stringify({ ts: new Date().toISOString(), action, data }) + '\n')
+  } catch {}
 }
 
 export function transaction(fn: () => void): void {

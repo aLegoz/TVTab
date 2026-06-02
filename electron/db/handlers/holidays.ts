@@ -1,5 +1,5 @@
 import { IpcMain } from 'electron'
-import { all, run, get } from '../db'
+import { all, run, get, appendAudit } from '../db'
 
 export function registerHolidayHandlers(ipc: IpcMain): void {
   ipc.handle('holidays:list', (_e, year: number, month: number) => {
@@ -12,9 +12,11 @@ export function registerHolidayHandlers(ipc: IpcMain): void {
     const existing = get('SELECT id FROM holidays WHERE date = ?', [date]) as any
     if (existing) {
       run('DELETE FROM holidays WHERE date = ?', [date])
+      appendAudit('holiday.toggle', { date, active: false })
       return { active: false }
     } else {
       run('INSERT INTO holidays (date) VALUES (?)', [date])
+      appendAudit('holiday.toggle', { date, active: true })
       return { active: true }
     }
   })
@@ -29,9 +31,11 @@ export function registerHolidayHandlers(ipc: IpcMain): void {
     const existing = get('SELECT id FROM workdays WHERE date = ?', [date]) as any
     if (existing) {
       run('DELETE FROM workdays WHERE date = ?', [date])
+      appendAudit('workday.toggle', { date, active: false })
       return { active: false }
     } else {
       run('INSERT INTO workdays (date) VALUES (?)', [date])
+      appendAudit('workday.toggle', { date, active: true })
       return { active: true }
     }
   })

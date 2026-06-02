@@ -1,5 +1,5 @@
 import { IpcMain } from 'electron'
-import { get, run } from '../db'
+import { get, run, appendAudit } from '../db'
 
 export function registerMonthSettingsHandlers(ipc: IpcMain): void {
   ipc.handle('monthSettings:get', (_e, year: number, month: number, key: string) => {
@@ -15,6 +15,7 @@ export function registerMonthSettingsHandlers(ipc: IpcMain): void {
       'INSERT OR REPLACE INTO month_settings (year, month, key, value) VALUES (?,?,?,?)',
       [year, month, key, value]
     )
+    appendAudit('monthSettings.set', { year, month, key, value })
     return true
   })
 }

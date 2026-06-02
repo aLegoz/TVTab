@@ -11,6 +11,7 @@ import { registerExportHandlers } from '../db/handlers/export'
 import { registerSettingsHandlers } from '../db/handlers/settings'
 import { registerHolidayHandlers } from '../db/handlers/holidays'
 import { registerMonthSettingsHandlers } from '../db/handlers/monthSettings'
+import { registerBackupHandlers } from '../db/handlers/backup'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -59,6 +60,7 @@ app.whenReady().then(async () => {
   registerSettingsHandlers(ipcMain)
   registerHolidayHandlers(ipcMain)
   registerMonthSettingsHandlers(ipcMain)
+  registerBackupHandlers(ipcMain)
 
   // Network discovery: listen for TVTab server UDP broadcasts for 3 seconds
   ipcMain.handle('network:findServers', () => {

@@ -1,5 +1,5 @@
 import { IpcMain } from 'electron'
-import { all, get, run, runNoSave, runTx, transaction } from '../db'
+import { all, get, run, runNoSave, runTx, transaction, appendAudit } from '../db'
 
 function syncCurrentRate(employeeId: number): void {
   const latest = get<any>(
@@ -18,11 +18,13 @@ export function registerEmployeeHandlers(ipc: IpcMain): void {
 
   ipc.handle('departments:create', (_e, name: string) => {
     const id = run('INSERT INTO departments (name) VALUES (?)', [name])
+    appendAudit('department.create', { id, name })
     return { id, name }
   })
 
   ipc.handle('departments:delete', (_e, id: number) => {
     run('DELETE FROM departments WHERE id = ?', [id])
+    appendAudit('department.delete', { id })
   })
 
   ipc.handle('employees:list', () => {
@@ -41,16 +43,19 @@ export function registerEmployeeHandlers(ipc: IpcMain): void {
   }) => {
     const effectiveFrom = data.hiredDate || '2000-01-01'
     let id!: number
+    let histId = 0
     transaction(() => {
       id = runTx(
         'INSERT INTO employees (full_name, position, department_id, rate_type, rate, hired_date) VALUES (?,?,?,?,?,?)',
         [data.fullName, data.position, data.departmentId ?? null, data.rateType, data.rate, data.hiredDate]
       )
-      runNoSave(
+      histId = runTx(
         'INSERT OR IGNORE INTO salary_history (employee_id, effective_from, rate_type, rate) VALUES (?,?,?,?)',
         [id, effectiveFrom, data.rateType, data.rate]
       )
     })
+    appendAudit('employee.create', { id, fullName: data.fullName, position: data.position, departmentId: data.departmentId, rateType: data.rateType, rate: data.rate, hiredDate: data.hiredDate })
+    if (histId > 0) appendAudit('salaryHistory.add', { id: histId, employeeId: id, effectiveFrom, rateType: data.rateType, rate: data.rate, note: '' })
     return { id, ...data }
   })
 
@@ -64,11 +69,13 @@ export function registerEmployeeHandlers(ipc: IpcMain): void {
         [data.fullName, data.position, data.departmentId ?? null, data.hiredDate, data.isActive ? 1 : 0, id]
       )
     })
+    appendAudit('employee.update', { id, ...data })
     return { id, ...data }
   })
 
   ipc.handle('employees:delete', (_e, id: number) => {
     run('UPDATE employees SET is_active=0 WHERE id=?', [id])
+    appendAudit('employee.deactivate', { id })
   })
 
   // --- Salary history ---
@@ -91,6 +98,7 @@ export function registerEmployeeHandlers(ipc: IpcMain): void {
       )
       syncCurrentRate(data.employeeId)
     })
+    appendAudit('salaryHistory.add', { id, ...data })
     return { id, ...data }
   })
 
@@ -99,5 +107,6 @@ export function registerEmployeeHandlers(ipc: IpcMain): void {
       runNoSave('DELETE FROM salary_history WHERE id=?', [id])
       syncCurrentRate(employeeId)
     })
+    appendAudit('salaryHistory.delete', { id, employeeId })
   })
 }

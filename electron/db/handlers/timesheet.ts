@@ -1,5 +1,5 @@
 import { IpcMain } from 'electron'
-import { all, run, runNoSave, transaction, get } from '../db'
+import { all, run, runNoSave, transaction, get, appendAudit } from '../db'
 
 function toMins(t: string): number {
   const [h, m] = t.split(':').map(Number)
@@ -58,10 +58,16 @@ export function registerTimesheetHandlers(ipc: IpcMain): void {
     `, [data.employeeId, data.date, data.code, hours,
         data.arrivalTime ?? null, data.departureTime ?? null,
         data.overtimeCoeff ?? null])
+    appendAudit('timesheet.save', {
+      employeeId: data.employeeId, date: data.date, code: data.code, hours,
+      arrivalTime: data.arrivalTime ?? null, departureTime: data.departureTime ?? null,
+      overtimeCoeff: data.overtimeCoeff ?? null
+    })
   })
 
   ipc.handle('timesheet:deleteRecord', (_e, employeeId: number, date: string) => {
     run('DELETE FROM timesheet_records WHERE employee_id=? AND date=?', [employeeId, date])
+    appendAudit('timesheet.delete', { employeeId, date })
   })
 
   ipc.handle('timesheet:bulkSave', (_e, records: Array<{
@@ -82,6 +88,10 @@ export function registerTimesheetHandlers(ipc: IpcMain): void {
             code=excluded.code, hours=excluded.hours,
             arrival_time=excluded.arrival_time, departure_time=excluded.departure_time
         `, [r.employeeId, r.date, r.code, hours, r.arrivalTime ?? null, r.departureTime ?? null])
+        appendAudit('timesheet.save', {
+          employeeId: r.employeeId, date: r.date, code: r.code, hours,
+          arrivalTime: r.arrivalTime ?? null, departureTime: r.departureTime ?? null, overtimeCoeff: null
+        })
       }
     })
   })

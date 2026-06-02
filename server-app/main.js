@@ -262,6 +262,44 @@ function calcSalaryForEmployee(db, empId, year, month, normDays, normHours, hour
   }
 }
 
+// ─── Audit log ────────────────────────────────────────────────────────────────
+function appendAudit(companyId, action, data) {
+  const logPath = path.join(DATA_DIR, 'companies', `${companyId}.audit.jsonl`)
+  try { fs.appendFileSync(logPath, JSON.stringify({ ts: new Date().toISOString(), action, data }) + '\n') } catch {}
+}
+
+function applyAuditEntry(db, entry) {
+  const { action, data: d } = entry
+  switch (action) {
+    case 'timesheet.save':
+      dbRun(db, `INSERT INTO timesheet_records (employee_id,date,code,hours,arrival_time,departure_time,overtime_coeff) VALUES (?,?,?,?,?,?,?)
+        ON CONFLICT(employee_id,date) DO UPDATE SET code=excluded.code,hours=excluded.hours,arrival_time=excluded.arrival_time,departure_time=excluded.departure_time,overtime_coeff=excluded.overtime_coeff`,
+        [d.employeeId, d.date, d.code, d.hours, d.arrivalTime??null, d.departureTime??null, d.overtimeCoeff??null]); break
+    case 'timesheet.delete': dbRun(db, 'DELETE FROM timesheet_records WHERE employee_id=? AND date=?', [d.employeeId, d.date]); break
+    case 'department.create': dbRun(db, 'INSERT OR IGNORE INTO departments (id,name) VALUES (?,?)', [d.id, d.name]); break
+    case 'department.delete': dbRun(db, 'DELETE FROM departments WHERE id=?', [d.id]); break
+    case 'employee.create':
+      dbRun(db, 'INSERT OR IGNORE INTO employees (id,full_name,position,department_id,rate_type,rate,hired_date,is_active) VALUES (?,?,?,?,?,?,?,1)',
+        [d.id, d.fullName, d.position||'', d.departmentId??null, d.rateType, d.rate, d.hiredDate||null]); break
+    case 'employee.update':
+      dbRun(db, 'UPDATE employees SET full_name=?,position=?,department_id=?,rate_type=?,rate=?,hired_date=?,is_active=? WHERE id=?',
+        [d.fullName, d.position||'', d.departmentId??null, d.rateType, d.rate, d.hiredDate||null, d.isActive?1:0, d.id]); break
+    case 'employee.deactivate': dbRun(db, 'UPDATE employees SET is_active=0 WHERE id=?', [d.id]); break
+    case 'salaryHistory.add':
+      dbRun(db, 'INSERT OR REPLACE INTO salary_history (id,employee_id,effective_from,rate_type,rate,note) VALUES (?,?,?,?,?,?)',
+        [d.id, d.employeeId, d.effectiveFrom, d.rateType, d.rate, d.note||'']); break
+    case 'salaryHistory.delete': dbRun(db, 'DELETE FROM salary_history WHERE id=?', [d.id]); break
+    case 'holiday.toggle':
+      if (d.active) dbRun(db, 'INSERT OR IGNORE INTO holidays (date) VALUES (?)', [d.date])
+      else dbRun(db, 'DELETE FROM holidays WHERE date=?', [d.date]); break
+    case 'workday.toggle':
+      if (d.active) dbRun(db, 'INSERT OR IGNORE INTO workdays (date) VALUES (?)', [d.date])
+      else dbRun(db, 'DELETE FROM workdays WHERE date=?', [d.date]); break
+    case 'monthSettings.set':
+      dbRun(db, 'INSERT OR REPLACE INTO month_settings (year,month,key,value) VALUES (?,?,?,?)', [d.year, d.month, d.key, d.value]); break
+  }
+}
+
 // ─── Express server ───────────────────────────────────────────────────────────
 let expressApp = null
 let server = null
@@ -341,12 +379,14 @@ function buildExpressApp() {
   })
   app.post('/companies/:id/departments', (req, res) => {
     dbRun(req.db, 'INSERT INTO departments (name) VALUES (?)', [req.body.name])
-    persistCompany(req.companyId)
     const row = dbGet(req.db, 'SELECT last_insert_rowid() AS id')
+    appendAudit(req.companyId, 'department.create', { id: row.id, name: req.body.name })
+    persistCompany(req.companyId)
     res.json({ id: row.id, name: req.body.name })
   })
   app.delete('/companies/:id/departments/:did', (req, res) => {
     dbRun(req.db, 'DELETE FROM departments WHERE id=?', [req.params.did])
+    appendAudit(req.companyId, 'department.delete', { id: Number(req.params.did) })
     persistCompany(req.companyId)
     res.json({ ok: true })
   })
@@ -373,6 +413,9 @@ function buildExpressApp() {
     const effectiveFrom = b.hiredDate || '2000-01-01'
     dbRun(req.db, 'INSERT OR IGNORE INTO salary_history (employee_id,effective_from,rate_type,rate,note) VALUES (?,?,?,?,?)',
       [empId, effectiveFrom, b.rateType, b.rate, ''])
+    const histRow = dbGet(req.db, 'SELECT last_insert_rowid() AS id')
+    appendAudit(req.companyId, 'employee.create', { id: empId, fullName: b.fullName, position: b.position||'', departmentId: b.departmentId||null, rateType: b.rateType, rate: b.rate, hiredDate: b.hiredDate||null })
+    if (histRow && histRow.id > 0) appendAudit(req.companyId, 'salaryHistory.add', { id: histRow.id, employeeId: empId, effectiveFrom, rateType: b.rateType, rate: b.rate, note: '' })
     persistCompany(req.companyId)
     res.json({ id: empId, ...b, isActive: true })
   })
@@ -380,11 +423,13 @@ function buildExpressApp() {
     const b = req.body
     dbRun(req.db, 'UPDATE employees SET full_name=?,position=?,department_id=?,rate_type=?,rate=?,hired_date=?,is_active=? WHERE id=?',
       [b.fullName, b.position||'', b.departmentId||null, b.rateType, b.rate, b.hiredDate||null, b.isActive?1:0, req.params.eid])
+    appendAudit(req.companyId, 'employee.update', { id: Number(req.params.eid), ...b })
     persistCompany(req.companyId)
     res.json({ id: Number(req.params.eid), ...b })
   })
   app.delete('/companies/:id/employees/:eid', (req, res) => {
     dbRun(req.db, 'UPDATE employees SET is_active=0 WHERE id=?', [req.params.eid])
+    appendAudit(req.companyId, 'employee.deactivate', { id: Number(req.params.eid) })
     persistCompany(req.companyId)
     res.json({ ok: true })
   })
@@ -403,11 +448,13 @@ function buildExpressApp() {
     dbRun(req.db, `INSERT INTO timesheet_records (employee_id,date,code,hours,arrival_time,departure_time,overtime_coeff) VALUES (?,?,?,?,?,?,?)
       ON CONFLICT(employee_id,date) DO UPDATE SET code=excluded.code,hours=excluded.hours,arrival_time=excluded.arrival_time,departure_time=excluded.departure_time,overtime_coeff=excluded.overtime_coeff`,
       [b.employeeId, b.date, b.code, b.hours, b.arrivalTime||null, b.departureTime||null, b.overtimeCoeff||null])
+    appendAudit(req.companyId, 'timesheet.save', { employeeId: b.employeeId, date: b.date, code: b.code, hours: b.hours, arrivalTime: b.arrivalTime||null, departureTime: b.departureTime||null, overtimeCoeff: b.overtimeCoeff||null })
     persistCompany(req.companyId)
     res.json({ ok: true })
   })
   app.delete('/companies/:id/timesheet/record/:empId/:date', (req, res) => {
     dbRun(req.db, 'DELETE FROM timesheet_records WHERE employee_id=? AND date=?', [req.params.empId, req.params.date])
+    appendAudit(req.companyId, 'timesheet.delete', { employeeId: Number(req.params.empId), date: req.params.date })
     persistCompany(req.companyId)
     res.json({ ok: true })
   })
@@ -642,6 +689,76 @@ function buildExpressApp() {
     const sickLine = s.sickDays>0?`<div style="margin-bottom:4px;font-size:8.5px;${bw?'':'color:#cf1322;'}">Лікарняні (${s.sickDays} дн., ×${s.sickCoeff}) = <b>${fmt2(s.sickPay)}</b></div>`:''
     const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:Arial,sans-serif;font-size:8.5px;color:#222;}table{width:100%;border-collapse:collapse;margin-bottom:10px;}th,td{border:1px solid ${bw?'#888':'#ccc'};padding:2px 4px;text-align:center;}th{background:${bw?'#d0d0d0':'#efefef'};font-size:8px;font-weight:bold;}td{font-size:8px;}.calc{${bw?'border:2px solid #333;':'background:#f6ffed;border:1px solid #b7eb8f;'}border-radius:4px;padding:8px 12px;}@page{size:A4 portrait;margin:8mm 10mm;}@media print{*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}}</style></head><body><div style="text-align:center;border-bottom:2px solid #333;padding-bottom:7px;margin-bottom:10px;"><h1 style="font-size:13px">${companyRow?.name??'TVTab'}</h1><div style="font-size:10px;color:#555">Розрахунок зарплати — ${months[m-1]} ${year}</div><div style="font-size:11px;font-weight:600;margin-top:3px">${s.emp.full_name}${s.emp.position?` — ${s.emp.position}`:''}</div></div><table><thead><tr><th style="width:20px">№</th><th>Дата</th><th style="width:28px">Код</th><th style="width:42px">Прихід</th><th style="width:42px">Відхід</th><th style="width:36px">Год.</th></tr></thead><tbody>${attendRows}</tbody></table><div class="calc"><div style="font-size:8px;font-weight:bold;text-transform:uppercase;border-bottom:${bw?'2px solid #333':'1px solid #ddd'};padding-bottom:2px;margin-bottom:6px">Розрахунок</div><div style="margin-bottom:4px;font-size:8.5px">Звичайні години: ${fmt2(s.derivedHourlyRate)} × ${fmtH(s.regularHours)} год = <b>${fmt2(s.regularSalary)}</b></div>${otLine}${vacLine}${sickLine}<hr style="border:none;border-top:${bw?'2px solid #333':'1px solid #b7eb8f'};margin:6px 0;"/><div style="font-size:16px;font-weight:bold;${bw?'text-decoration:underline;':'color:#1677ff;'}">До виплати: ${fmt2(s.salary)} ${currency}</div></div><script>window.print()</script></body></html>`
     res.setHeader('Content-Type','text/html; charset=utf-8'); res.send(html)
+  })
+
+  // ── Backup / Audit ────────────────────────────────────────────────────────
+  app.get('/companies/:id/export/json', (req, res) => {
+    const db = req.db
+    const data = {
+      version: '1.4.0', exportedAt: new Date().toISOString(),
+      departments: dbAll(db, 'SELECT * FROM departments'),
+      employees: dbAll(db, 'SELECT * FROM employees'),
+      salaryHistory: dbAll(db, 'SELECT * FROM salary_history'),
+      timesheetRecords: dbAll(db, 'SELECT * FROM timesheet_records'),
+      holidays: dbAll(db, 'SELECT date FROM holidays').map(r => r.date),
+      workdays: dbAll(db, 'SELECT date FROM workdays').map(r => r.date),
+      monthSettings: dbAll(db, 'SELECT * FROM month_settings'),
+      settings: dbAll(db, 'SELECT * FROM settings'),
+    }
+    res.setHeader('Content-Disposition', `attachment; filename="tvtab-backup-${req.params.id}.json"`)
+    res.json(data)
+  })
+
+  app.post('/companies/:id/import/json', (req, res) => {
+    const db = req.db
+    const data = req.body
+    dbRun(db, 'DELETE FROM timesheet_records')
+    dbRun(db, 'DELETE FROM salary_history')
+    dbRun(db, 'DELETE FROM employees')
+    dbRun(db, 'DELETE FROM departments')
+    dbRun(db, 'DELETE FROM holidays')
+    dbRun(db, 'DELETE FROM workdays')
+    dbRun(db, 'DELETE FROM month_settings')
+    try { dbRun(db, 'DELETE FROM sqlite_sequence') } catch {}
+    for (const d of data.departments ?? []) dbRun(db, 'INSERT INTO departments (id,name) VALUES (?,?)', [d.id, d.name])
+    for (const e of data.employees ?? []) dbRun(db, 'INSERT INTO employees (id,full_name,position,department_id,rate_type,rate,hired_date,is_active) VALUES (?,?,?,?,?,?,?,?)', [e.id, e.full_name, e.position, e.department_id, e.rate_type, e.rate, e.hired_date, e.is_active])
+    for (const s of data.salaryHistory ?? []) dbRun(db, 'INSERT INTO salary_history (id,employee_id,effective_from,rate_type,rate,note) VALUES (?,?,?,?,?,?)', [s.id, s.employee_id, s.effective_from, s.rate_type, s.rate, s.note??''])
+    for (const r of data.timesheetRecords ?? []) dbRun(db, 'INSERT INTO timesheet_records (id,employee_id,date,code,hours,arrival_time,departure_time,overtime_coeff) VALUES (?,?,?,?,?,?,?,?)', [r.id, r.employee_id, r.date, r.code, r.hours, r.arrival_time, r.departure_time, r.overtime_coeff])
+    for (const date of data.holidays ?? []) dbRun(db, 'INSERT OR IGNORE INTO holidays (date) VALUES (?)', [date])
+    for (const date of data.workdays ?? []) dbRun(db, 'INSERT OR IGNORE INTO workdays (date) VALUES (?)', [date])
+    for (const ms of data.monthSettings ?? []) dbRun(db, 'INSERT OR REPLACE INTO month_settings (year,month,key,value) VALUES (?,?,?,?)', [ms.year, ms.month, ms.key, ms.value])
+    persistCompany(req.companyId)
+    broadcast(req.companyId)
+    res.json({ ok: true })
+  })
+
+  app.get('/companies/:id/audit/download', (req, res) => {
+    const logPath = path.join(DATA_DIR, 'companies', `${req.params.id}.audit.jsonl`)
+    if (!fs.existsSync(logPath)) return res.status(404).json({ error: 'No audit log found' })
+    res.download(logPath, `tvtab-audit-${req.params.id}.jsonl`)
+  })
+
+  app.post('/companies/:id/restore-from-audit', (req, res) => {
+    const db = req.db
+    const logPath = path.join(DATA_DIR, 'companies', `${req.params.id}.audit.jsonl`)
+    if (!fs.existsSync(logPath)) return res.status(404).json({ error: 'No audit log found' })
+    const lines = fs.readFileSync(logPath, 'utf8').trim().split('\n').filter(Boolean)
+    const entries = lines.map(l => JSON.parse(l))
+    let restored = 0, errors = 0
+    dbRun(db, 'DELETE FROM timesheet_records')
+    dbRun(db, 'DELETE FROM salary_history')
+    dbRun(db, 'DELETE FROM employees')
+    dbRun(db, 'DELETE FROM departments')
+    dbRun(db, 'DELETE FROM holidays')
+    dbRun(db, 'DELETE FROM workdays')
+    dbRun(db, 'DELETE FROM month_settings')
+    try { dbRun(db, 'DELETE FROM sqlite_sequence') } catch {}
+    for (const entry of entries) {
+      try { applyAuditEntry(db, entry); restored++ } catch { errors++ }
+    }
+    persistCompany(req.companyId)
+    broadcast(req.companyId)
+    res.json({ ok: true, restored, errors })
   })
 
   return app
