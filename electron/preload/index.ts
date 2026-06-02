@@ -35,6 +35,10 @@ const api = {
     summary: (year: number, month: number) => ipcRenderer.invoke('salary:summary', year, month),
     detail: (employeeId: number, year: number, month: number) => ipcRenderer.invoke('salary:detail', employeeId, year, month)
   },
+  advances: {
+    set: (employeeId: number, year: number, month: number, amount: number, givenDate: string) =>
+      ipcRenderer.invoke('advance:set', employeeId, year, month, amount, givenDate),
+  },
   export: {
     toExcel: (year: number, month: number, lang: string) => ipcRenderer.invoke('export:toExcel', year, month, lang),
     toPdf: (year: number, month: number, lang: string) => ipcRenderer.invoke('export:toPdf', year, month, lang),

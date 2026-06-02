@@ -70,6 +70,8 @@ export interface SalarySummary {
   vacationPay: number
   sickPay: number
   salary: number
+  advance: number
+  advanceDate: string
 }
 
 export interface DayRecord {
@@ -108,6 +110,8 @@ export interface SalaryDetail {
   vacationPay: number
   sickPay: number
   salary: number
+  advance: number
+  advanceDate: string
 }
 
 export interface AppSettings {

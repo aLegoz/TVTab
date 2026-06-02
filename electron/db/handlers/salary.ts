@@ -1,5 +1,5 @@
 import { IpcMain } from 'electron'
-import { all, get } from '../db'
+import { all, get, run } from '../db'
 
 function getSettingVal(key: string, def: string): string {
   return (get(`SELECT value FROM settings WHERE key='${key}'`) as any)?.value ?? def
@@ -53,6 +53,15 @@ function calcEmployeeSalary(
 }
 
 export function registerSalaryHandlers(ipc: IpcMain): void {
+
+  ipc.handle('advance:set', (_e, employeeId: number, year: number, month: number, amount: number, givenDate: string) => {
+    if (!amount || amount <= 0) {
+      run('DELETE FROM advances WHERE employee_id=? AND year=? AND month=?', [employeeId, year, month])
+    } else {
+      run('INSERT OR REPLACE INTO advances (employee_id,year,month,amount,given_date) VALUES (?,?,?,?,?)',
+        [employeeId, year, month, amount, givenDate || ''])
+    }
+  })
 
   ipc.handle('salary:detail', (_e, employeeId: number, year: number, month: number) => {
     const prefix = `${year}-${String(month).padStart(2, '0')}`
@@ -127,6 +136,11 @@ export function registerSalaryHandlers(ipc: IpcMain): void {
     const regularSalary = Math.round(derivedHourlyRate * regularHours * 100) / 100
     const overtimeSalary = Math.round((workedSalary - regularSalary) * 100) / 100
 
+    const advRow = get<{ amount: number; given_date: string }>(
+      'SELECT amount, given_date FROM advances WHERE employee_id=? AND year=? AND month=?',
+      [employeeId, year, month]
+    )
+
     return {
       employee: { id: emp.id, fullName: emp.full_name, position: emp.position },
       year, month, normDays, normHours, hoursPerDay,
@@ -143,6 +157,8 @@ export function registerSalaryHandlers(ipc: IpcMain): void {
       regularSalary,
       overtimeSalary,
       salary,
+      advance: advRow?.amount ?? 0,
+      advanceDate: advRow?.given_date ?? '',
     }
   })
 
@@ -210,6 +226,11 @@ export function registerSalaryHandlers(ipc: IpcMain): void {
       const sickPay = Math.round(perDayRate * sickDays * sickCoeff * 100) / 100
       const salary = Math.round((workedSalary + vacationPay + sickPay) * 100) / 100
 
+      const advRow = get<{ amount: number; given_date: string }>(
+        'SELECT amount, given_date FROM advances WHERE employee_id=? AND year=? AND month=?',
+        [emp.id, year, month]
+      )
+
       return {
         employee: {
           id: emp.id, fullName: emp.full_name, position: emp.position,
@@ -225,6 +246,8 @@ export function registerSalaryHandlers(ipc: IpcMain): void {
         workedHours: Math.round((regularHours + overtimeHours) * 100) / 100,
         overtimeHours,
         vacationDays, sickDays, vacationPay, sickPay, salary,
+        advance: advRow?.amount ?? 0,
+        advanceDate: advRow?.given_date ?? '',
       }
     })
   })

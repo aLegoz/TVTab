@@ -41,6 +41,7 @@ export interface IRepository {
   // Salary
   getSalarySummary(year: number, month: number): Promise<SalarySummary[]>
   getSalaryDetail(employeeId: number, year: number, month: number): Promise<SalaryDetail | null>
+  setAdvance(employeeId: number, year: number, month: number, amount: number, givenDate: string): Promise<void>
 
   // Export (local only — remote opens browser download)
   exportToExcel(year: number, month: number, lang: Lang): Promise<string | null>

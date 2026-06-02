@@ -142,6 +142,14 @@ function getCompanyDb(id) {
       value TEXT    NOT NULL,
       PRIMARY KEY (year, month, key)
     );
+
+    CREATE TABLE IF NOT EXISTS advances (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+      year INTEGER NOT NULL, month INTEGER NOT NULL,
+      amount REAL NOT NULL DEFAULT 0, given_date TEXT NOT NULL DEFAULT '',
+      UNIQUE(employee_id, year, month)
+    );
   `)
   companyDbs[id] = db
   return db
@@ -506,6 +514,7 @@ app.get('/companies/:id/salary/:year/:month', (req, res) => {
 
   res.json(employees.map(emp => {
     const s = calcSalaryForEmployee(db, emp, y, m, normDays, normHours, hoursPerDay, overtimeCoeff)
+    const advRow = db.prepare('SELECT amount, given_date FROM advances WHERE employee_id=? AND year=? AND month=?').get(emp.id, y, m)
     return {
       employee: {
         id: emp.id, fullName: emp.full_name, position: emp.position,
@@ -520,6 +529,7 @@ app.get('/companies/:id/salary/:year/:month', (req, res) => {
       overtimeHours: s.overtimeHours,
       vacationDays: s.vacationDays, sickDays: s.sickDays,
       vacationPay: s.vacationPay, sickPay: s.sickPay, salary: s.salary,
+      advance: advRow?.amount ?? 0, advanceDate: advRow?.given_date ?? '',
     }
   }))
 })
@@ -550,6 +560,7 @@ app.get('/companies/:id/salary/:year/:month/detail/:empId', (req, res) => {
     hours: r.hours, regularHours: r.hours, overtimeHours: 0, overtimeCoeff,
   }))
 
+  const advRow = db.prepare('SELECT amount, given_date FROM advances WHERE employee_id=? AND year=? AND month=?').get(Number(empId), y, m)
   res.json({
     employee: { id: emp.id, fullName: emp.full_name, position: emp.position },
     year: y, month: m, normDays, normHours, hoursPerDay,
@@ -563,7 +574,22 @@ app.get('/companies/:id/salary/:year/:month/detail/:empId', (req, res) => {
     vacationDays: s.vacationDays, sickDays: s.sickDays,
     regularSalary: s.regularSalary, overtimeSalary: s.overtimeSalary,
     vacationPay: s.vacationPay, sickPay: s.sickPay, salary: s.salary,
+    advance: advRow?.amount ?? 0, advanceDate: advRow?.given_date ?? '',
   })
+})
+
+// ─── Advances ────────────────────────────────────────────────────────────────
+app.put('/companies/:id/advances/:year/:month/:empId', (req, res) => {
+  const { year, month, empId } = req.params
+  const { amount, givenDate } = req.body
+  const y = Number(year), m = Number(month), eid = Number(empId)
+  if (!amount || amount <= 0) {
+    req.db.prepare('DELETE FROM advances WHERE employee_id=? AND year=? AND month=?').run(eid, y, m)
+  } else {
+    req.db.prepare('INSERT OR REPLACE INTO advances (employee_id,year,month,amount,given_date) VALUES (?,?,?,?,?)').run(eid, y, m, amount, givenDate || '')
+  }
+  broadcast(req.companyId)
+  res.json({ ok: true })
 })
 
 // ─── Excel export ─────────────────────────────────────────────────────────────

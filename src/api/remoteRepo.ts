@@ -62,6 +62,10 @@ export class RemoteRepository implements IRepository {
   getSalarySummary = (year: number, month: number) => this.req<SalarySummary[]>(`/salary/${year}/${month}`)
   getSalaryDetail = (employeeId: number, year: number, month: number) =>
     this.req<SalaryDetail | null>(`/salary/${year}/${month}/detail/${employeeId}`)
+  setAdvance = (employeeId: number, year: number, month: number, amount: number, givenDate: string) =>
+    this.req<void>(`/advances/${year}/${month}/${employeeId}`, {
+      method: 'PUT', body: JSON.stringify({ amount, givenDate })
+    })
 
   async exportToExcel(year: number, month: number, lang: Lang): Promise<string | null> {
     window.open(`${this.baseUrl}/export/excel/${year}/${month}?lang=${lang}`)

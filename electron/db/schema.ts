@@ -60,6 +60,16 @@ CREATE TABLE IF NOT EXISTS month_settings (
   PRIMARY KEY (year, month, key)
 );
 
+CREATE TABLE IF NOT EXISTS advances (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+  year        INTEGER NOT NULL,
+  month       INTEGER NOT NULL,
+  amount      REAL    NOT NULL DEFAULT 0,
+  given_date  TEXT    NOT NULL DEFAULT '',
+  UNIQUE(employee_id, year, month)
+);
+
 INSERT OR IGNORE INTO settings (key, value) VALUES ('mode', 'local');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('serverUrl', '');
 INSERT OR IGNORE INTO settings (key, value) VALUES ('workHoursPerDay', '8');

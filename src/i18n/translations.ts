@@ -145,6 +145,10 @@ const ru = {
     sickCoeffSaved: 'Коэффициент больничного сохранён',
     overtimeCoeffGlobal: 'глобальный',
     exportDetailPdf: 'Скачать PDF',
+    colAdvance: 'Аванс',
+    advanceSaved: 'Аванс сохранён',
+    advanceDateLabel: 'Дата выдачи',
+    advanceDeduct: 'Аванс (вычитается)',
   },
   settings: {
     title: 'Настройки',
@@ -315,6 +319,10 @@ const uk: typeof ru = {
     sickCoeffSaved: 'Коефіцієнт лікарняного збережено',
     overtimeCoeffGlobal: 'глобальний',
     exportDetailPdf: 'Завантажити PDF',
+    colAdvance: 'Аванс',
+    advanceSaved: 'Аванс збережено',
+    advanceDateLabel: 'Дата видачі',
+    advanceDeduct: 'Аванс (відраховується)',
   },
   settings: {
     title: 'Налаштування',
@@ -485,6 +493,10 @@ const en: typeof ru = {
     sickCoeffSaved: 'Sick coefficient saved',
     overtimeCoeffGlobal: 'global',
     exportDetailPdf: 'Download PDF',
+    colAdvance: 'Advance',
+    advanceSaved: 'Advance saved',
+    advanceDateLabel: 'Date given',
+    advanceDeduct: 'Advance (deducted)',
   },
   settings: {
     title: 'Settings',

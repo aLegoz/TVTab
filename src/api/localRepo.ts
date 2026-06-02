@@ -174,6 +174,10 @@ export class LocalRepository implements IRepository {
     return this.api.salary.detail(employeeId, year, month)
   }
 
+  async setAdvance(employeeId: number, year: number, month: number, amount: number, givenDate: string): Promise<void> {
+    return this.api.advances.set(employeeId, year, month, amount, givenDate)
+  }
+
   async exportToExcel(year: number, month: number, lang: Lang): Promise<string | null> {
     return this.api.export.toExcel(year, month, lang)
   }

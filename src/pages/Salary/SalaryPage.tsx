@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Table, Button, Typography, Spin, message, Tag, Drawer,
-  Descriptions, Divider, Space, Statistic, InputNumber, Tooltip, Dropdown
+  Descriptions, Divider, Space, Statistic, InputNumber, Tooltip, Dropdown, DatePicker
 } from 'antd'
 import {
   FileExcelOutlined, FilePdfOutlined,
@@ -44,6 +44,11 @@ export default function SalaryPage() {
   const [vacInput, setVacInput] = useState<number>(1)
   const [sickCoeff, setSickCoeff] = useState<number | null>(null)
   const [sickInput, setSickInput] = useState<number>(0)
+  const [advanceDrawerOpen, setAdvanceDrawerOpen] = useState(false)
+  const [advanceEmployee, setAdvanceEmployee] = useState<SalarySummary | null>(null)
+  const [advanceAmount, setAdvanceAmount] = useState<number | null>(null)
+  const [advanceDate, setAdvanceDate] = useState<string>('')
+  const [advanceSaving, setAdvanceSaving] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -111,6 +116,38 @@ export default function SalaryPage() {
     load()
   }
 
+  function openAdvanceDrawer(row: SalarySummary) {
+    setAdvanceEmployee(row)
+    setAdvanceAmount(row.advance > 0 ? row.advance : 10000)
+    setAdvanceDate(row.advanceDate || dayjs().format('YYYY-MM-DD'))
+    setAdvanceDrawerOpen(true)
+  }
+
+  async function confirmAdvance() {
+    if (!advanceEmployee) return
+    setAdvanceSaving(true)
+    try {
+      await repo.setAdvance(advanceEmployee.employee.id, year, month, advanceAmount ?? 0, advanceDate)
+      message.success((t.salary as any).advanceSaved)
+      setAdvanceDrawerOpen(false)
+      load()
+    } finally {
+      setAdvanceSaving(false)
+    }
+  }
+
+  async function clearAdvance() {
+    if (!advanceEmployee) return
+    setAdvanceSaving(true)
+    try {
+      await repo.setAdvance(advanceEmployee.employee.id, year, month, 0, '')
+      setAdvanceDrawerOpen(false)
+      load()
+    } finally {
+      setAdvanceSaving(false)
+    }
+  }
+
   async function exportDetail(colorMode: 'color' | 'bw') {
     if (!detail) return
     setDetailExporting(true)
@@ -139,9 +176,11 @@ export default function SalaryPage() {
     finally { setExporting(false) }
   }
 
-  const totalSalary = data.reduce((s, r) => s + r.salary, 0)
-  const totalDays   = data.reduce((s, r) => s + r.workedDays, 0)
-  const totalHours  = data.reduce((s, r) => s + r.workedHours, 0)
+  const totalSalary  = data.reduce((s, r) => s + r.salary, 0)
+  const totalDays    = data.reduce((s, r) => s + r.workedDays, 0)
+  const totalHours   = data.reduce((s, r) => s + r.workedHours, 0)
+  const totalAdvance = data.reduce((s, r) => s + (r.advance || 0), 0)
+  const totalToPay   = totalSalary - totalAdvance
 
   const columns = [
     { title: t.employees.colNum, width: 48, render: (_: any, __: any, i: number) => i + 1 },
@@ -168,12 +207,32 @@ export default function SalaryPage() {
     { title: t.salary.colVacation,dataIndex: 'vacationDays', key: 'vac',   width: 65, align: 'center' as const },
     { title: t.salary.colSick,    dataIndex: 'sickDays',     key: 'sick',  width: 60, align: 'center' as const },
     {
-      title: t.salary.colTotal, key: 'salary', width: 130, align: 'right' as const,
+      title: (t.salary as any).colAdvance, key: 'advance', width: 150, align: 'right' as const,
       render: (_: any, r: SalarySummary) => (
-        <span style={{ fontWeight: 700, color: '#1677ff' }}>
-          {r.salary.toLocaleString('ru-RU', { minimumFractionDigits: 2 })} {cur}
-        </span>
+        <div style={{ cursor: 'pointer', textAlign: 'right' }} onClick={() => openAdvanceDrawer(r)}>
+          <Tag color={r.advance > 0 ? 'orange' : 'default'} style={{ minWidth: 80, textAlign: 'right' }}>
+            {r.advance > 0
+              ? `${r.advance.toLocaleString('ru-RU', { minimumFractionDigits: 2 })} ${cur}`
+              : '—'}
+          </Tag>
+          {r.advance > 0 && r.advanceDate && (
+            <div style={{ fontSize: 11, color: '#aaa', marginTop: 2 }}>
+              {dayjs(r.advanceDate).format('DD.MM.YYYY')}
+            </div>
+          )}
+        </div>
       )
+    },
+    {
+      title: t.salary.colTotal, key: 'toPay', width: 130, align: 'right' as const,
+      render: (_: any, r: SalarySummary) => {
+        const toPay = r.salary - (r.advance ?? 0)
+        return (
+          <span style={{ fontWeight: 700, color: '#1677ff' }}>
+            {toPay.toLocaleString('ru-RU', { minimumFractionDigits: 2 })} {cur}
+          </span>
+        )
+      }
     },
     {
       title: '', key: 'detail', width: 50,
@@ -252,14 +311,89 @@ export default function SalaryPage() {
             <Table.Summary.Cell index={6} align="center" />
             <Table.Summary.Cell index={7} align="center" />
             <Table.Summary.Cell index={8} align="right">
+              {totalAdvance > 0 && (
+                <span style={{ color: '#fa8c16' }}>
+                  -{totalAdvance.toLocaleString('ru-RU', { minimumFractionDigits: 2 })} {cur}
+                </span>
+              )}
+            </Table.Summary.Cell>
+            <Table.Summary.Cell index={9} align="right">
               <span style={{ color: '#1677ff' }}>
-                {totalSalary.toLocaleString('ru-RU', { minimumFractionDigits: 2 })} {cur}
+                {totalToPay.toLocaleString('ru-RU', { minimumFractionDigits: 2 })} {cur}
               </span>
             </Table.Summary.Cell>
-            <Table.Summary.Cell index={9} />
+            <Table.Summary.Cell index={10} />
           </Table.Summary.Row>
         )}
       />
+
+      {/* Drawer авансу */}
+      <Drawer
+        title={advanceEmployee ? `${advanceEmployee.employee.fullName} — ${(t.salary as any).colAdvance}` : ''}
+        open={advanceDrawerOpen}
+        onClose={() => setAdvanceDrawerOpen(false)}
+        width={360}
+        styles={{ body: { padding: '24px 20px' } }}
+        footer={
+          <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+            {advanceEmployee && advanceEmployee.advance > 0 && (
+              <Button danger onClick={clearAdvance} loading={advanceSaving}>
+                Очистити
+              </Button>
+            )}
+            <Button onClick={() => setAdvanceDrawerOpen(false)}>Скасувати</Button>
+            <Button type="primary" onClick={confirmAdvance} loading={advanceSaving}>
+              Зберегти
+            </Button>
+          </Space>
+        }
+      >
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <div>
+            <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>
+              {(t.salary as any).colAdvance}
+            </div>
+            <InputNumber
+              min={0}
+              precision={2}
+              value={advanceAmount}
+              placeholder="0.00"
+              onChange={(v) => setAdvanceAmount(v)}
+              style={{ width: '100%' }}
+              size="large"
+              suffix={company.currency}
+              autoFocus
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>
+              {(t.salary as any).advanceDateLabel}
+            </div>
+            <DatePicker
+              value={advanceDate ? dayjs(advanceDate) : null}
+              onChange={(d) => setAdvanceDate(d ? d.format('YYYY-MM-DD') : '')}
+              style={{ width: '100%' }}
+              size="large"
+              format="DD.MM.YYYY"
+              allowClear
+            />
+          </div>
+          {advanceEmployee && advanceEmployee.salary > 0 && (advanceAmount ?? 0) > 0 && (
+            <div style={{
+              background: '#fff7e6', border: '1px solid #ffd591', borderRadius: 8,
+              padding: '12px 16px'
+            }}>
+              <div style={{ fontSize: 12, color: '#888' }}>До виплати:</div>
+              <div style={{ fontSize: 20, fontWeight: 700, color: '#1677ff' }}>
+                {fmt(advanceEmployee.salary - (advanceAmount ?? 0))} {company.currency}
+              </div>
+              <div style={{ fontSize: 11, color: '#aaa' }}>
+                {fmt(advanceEmployee.salary)} − {fmt(advanceAmount ?? 0)}
+              </div>
+            </div>
+          )}
+        </Space>
+      </Drawer>
 
       {/* Drawer детального расчёта */}
       <Drawer
@@ -433,10 +567,17 @@ function DetailContent({ detail, cur }: { detail: SalaryDetail; cur: string }) {
           </div>
         )}
 
+        {detail.advance > 0 && (
+          <div style={{ fontSize: 13, color: '#fa8c16', marginBottom: 4 }}>
+            {(t.salary as any).advanceDeduct}
+            {detail.advanceDate ? ` (${dayjs(detail.advanceDate).format('DD.MM')})` : ''}
+            : <b>-{fmt(detail.advance)} {cur}</b>
+          </div>
+        )}
         <Divider style={{ margin: '8px 0' }} />
         <Statistic
           title={t.salary.toPay}
-          value={fmt(detail.salary)}
+          value={fmt(detail.salary - (detail.advance ?? 0))}
           suffix={cur}
           valueStyle={{ color: '#1677ff', fontWeight: 700, fontSize: 28 }}
         />

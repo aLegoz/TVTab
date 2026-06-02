@@ -170,6 +170,12 @@ const COMPANY_SCHEMA = `
     year INTEGER NOT NULL, month INTEGER NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
     PRIMARY KEY (year, month, key)
   );
+  CREATE TABLE IF NOT EXISTS advances (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    employee_id INTEGER NOT NULL, year INTEGER NOT NULL, month INTEGER NOT NULL,
+    amount REAL NOT NULL DEFAULT 0, given_date TEXT NOT NULL DEFAULT '',
+    UNIQUE(employee_id, year, month)
+  );
 `
 
 const companyDbs = {}
@@ -560,11 +566,13 @@ function buildExpressApp() {
     res.json(employees.map(emp => {
       const s = calcSalaryForEmployee(db, emp.id, y, m, normDays, normHours, hoursPerDay, overtimeCoeff)
       if (!s) return null
+      const advRow = dbGet(db, 'SELECT amount, given_date FROM advances WHERE employee_id=? AND year=? AND month=?', [emp.id, y, m])
       return {
         employee: { id: emp.id, fullName: emp.full_name, position: emp.position, departmentId: emp.department_id, departmentName: emp.department_name, rateType: emp.rate_type, rate: emp.rate, hiredDate: emp.hired_date, isActive: true },
         normDays, effectiveRate: s.rate, effectiveRateType: s.rateType, derivedHourlyRate: s.derivedHourlyRate,
         workedDays: s.workedDays, workedHours: s.workedHours, overtimeHours: s.overtimeHours,
         vacationDays: s.vacationDays, sickDays: s.sickDays, vacationPay: s.vacationPay, sickPay: s.sickPay, salary: s.salary,
+        advance: advRow?.amount ?? 0, advanceDate: advRow?.given_date ?? '',
       }
     }).filter(Boolean))
   })
@@ -588,6 +596,7 @@ function buildExpressApp() {
     const s = calcSalaryForEmployee(db, Number(empId), y, m, normDays, normHours, hoursPerDay, overtimeCoeff)
     if (!s) return res.json(null)
 
+    const advRow = dbGet(db, 'SELECT amount, given_date FROM advances WHERE employee_id=? AND year=? AND month=?', [Number(empId), y, m])
     res.json({
       employee: { id: s.emp.id, fullName: s.emp.full_name, position: s.emp.position },
       year: y, month: m, normDays, normHours, hoursPerDay,
@@ -598,7 +607,23 @@ function buildExpressApp() {
       vacationDays: s.vacationDays, sickDays: s.sickDays,
       regularSalary: s.regularSalary, overtimeSalary: s.overtimeSalary,
       vacationPay: s.vacationPay, sickPay: s.sickPay, salary: s.salary,
+      advance: advRow?.amount ?? 0, advanceDate: advRow?.given_date ?? '',
     })
+  })
+
+  // ── Advances ──────────────────────────────────────────────────────────────
+  app.put('/companies/:id/advances/:year/:month/:empId', (req, res) => {
+    const { year, month, empId } = req.params
+    const { amount, givenDate } = req.body
+    const y = Number(year), m = Number(month), eid = Number(empId)
+    if (!amount || amount <= 0) {
+      dbRun(req.db, 'DELETE FROM advances WHERE employee_id=? AND year=? AND month=?', [eid, y, m])
+    } else {
+      dbRun(req.db, 'INSERT OR REPLACE INTO advances (employee_id,year,month,amount,given_date) VALUES (?,?,?,?,?)',
+        [eid, y, m, amount, givenDate || ''])
+    }
+    persistCompany(req.companyId)
+    res.json({ ok: true })
   })
 
   // ── Excel export ──────────────────────────────────────────────────────────
