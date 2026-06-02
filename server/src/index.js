@@ -957,27 +957,6 @@ app.post('/companies/:id/restore-from-audit', (req, res) => {
   res.json({ ok: true, restored, errors })
 })
 
-// ─── Web client static files ───────────────────────────────────────────────────
-const WEB_DIST = (() => {
-  // Look for web build relative to this file: server/src/index.js → dist/web/
-  const candidates = [
-    path.join(__dirname, '../../dist/web'),
-    path.join(__dirname, '../../../dist/web'),
-    path.join(process.cwd(), 'dist/web'),
-  ]
-  return candidates.find((p) => fs.existsSync(p)) ?? null
-})()
-
-if (WEB_DIST) {
-  app.use(express.static(WEB_DIST))
-  // SPA fallback: serve index.html for unknown routes (not API routes)
-  app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/companies')) return next()
-    res.sendFile(path.join(WEB_DIST, 'index.html'))
-  })
-  console.log(`Web client served from: ${WEB_DIST}`)
-}
-
 // ─── Start ─────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`TVTab server running on http://localhost:${PORT}`)

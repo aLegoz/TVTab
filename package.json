@@ -10,6 +10,7 @@
     "build": "electron-vite build",
     "build:win": "npm run build && electron-builder --win",
     "build:web": "vite build --config vite.web.config.ts",
+    "build:server-app": "npm run build:web && cd server-app && npx electron-builder --win --dir",
     "postinstall": "electron-builder install-app-deps || true"
   },
   "dependencies": {

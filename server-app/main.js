@@ -10,6 +10,17 @@ const http = require('http')
 // ─── Single instance ────────────────────────────────────────────────────────
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0) }
 
+// ─── Web client directory ────────────────────────────────────────────────────
+function getWebDir() {
+  // Packaged: extraResources puts web/ into resources/web/
+  const packed = path.join(process.resourcesPath || '', 'web')
+  // Development: dist/web/ relative to project root (one level above server-app/)
+  const dev = path.join(__dirname, '../dist/web')
+  if (fs.existsSync(packed) && fs.existsSync(path.join(packed, 'index.html'))) return packed
+  if (fs.existsSync(dev) && fs.existsSync(path.join(dev, 'index.html'))) return dev
+  return null
+}
+
 // ─── Paths ───────────────────────────────────────────────────────────────────
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json')
 const DEFAULT_DATA_DIR = path.join(app.getPath('userData'), 'data')
@@ -849,6 +860,16 @@ function buildExpressApp() {
     broadcast(req.companyId)
     res.json({ ok: true, restored, errors })
   })
+
+  // ── Web client static files ───────────────────────────────────────────────
+  const webDir = getWebDir()
+  if (webDir) {
+    app.use(require('express').static(webDir))
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/companies')) return next()
+      res.sendFile(path.join(webDir, 'index.html'))
+    })
+  }
 
   return app
 }
