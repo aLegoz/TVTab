@@ -28,3 +28,4 @@ body {
 }
 .timesheet-cell:hover { opacity: 0.8; }
 .timesheet-cell.weekend { color: #aaa; }
+.timesheet-cell.open { outline: 2px solid #1677ff; outline-offset: -1px; }

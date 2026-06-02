@@ -3,7 +3,7 @@ import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'r
 import { Layout, Menu, Button, Typography, Tooltip } from 'antd'
 import {
   TeamOutlined, CalendarOutlined, DollarOutlined,
-  SettingOutlined, SwapOutlined
+  SettingOutlined, SwapOutlined, LeftOutlined, RightOutlined
 } from '@ant-design/icons'
 import { RepositoryProvider } from './api/RepositoryContext'
 import { LocalRepository } from './api/localRepo'
@@ -15,10 +15,11 @@ import SalaryPage from './pages/Salary/SalaryPage'
 import SettingsPage from './pages/Settings/SettingsPage'
 import CompanySelectPage from './pages/CompanySelect/CompanySelectPage'
 import { useLang } from './i18n/LangContext'
+import { useMonth, MonthProvider } from './i18n/MonthContext'
 import type { Lang } from './i18n/translations'
 import type { Company } from './types'
 
-const { Sider, Content } = Layout
+const { Sider, Content, Header } = Layout
 const { Text } = Typography
 
 interface CompanyCtx { company: Company; switchCompany: () => void }
@@ -34,6 +35,7 @@ function AppLayout({ onSwitch }: { onSwitch: () => void }) {
   const navigate = useNavigate()
   const { company } = useCompany()
   const { lang, setLang, t } = useLang()
+  const { year, month, prev, next } = useMonth()
   const selectedKey = '/' + location.pathname.split('/')[1]
 
   const menuItems = [
@@ -100,6 +102,17 @@ function AppLayout({ onSwitch }: { onSwitch: () => void }) {
       </Sider>
 
       <Layout>
+        <Header style={{
+          background: '#fff', padding: '0 24px', height: 48,
+          lineHeight: '48px', borderBottom: '1px solid #f0f0f0',
+          display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0
+        }}>
+          <Button type="text" size="small" icon={<LeftOutlined />} onClick={prev} />
+          <Text style={{ fontWeight: 600, fontSize: 14, minWidth: 130, textAlign: 'center' }}>
+            {t.timesheet.months[month - 1]} {year}
+          </Text>
+          <Button type="text" size="small" icon={<RightOutlined />} onClick={next} />
+        </Header>
         <Content className="page-content">
           <Routes>
             <Route path="/" element={<Navigate to="/timesheet" replace />} />
@@ -141,9 +154,11 @@ export default function App() {
   return (
     <CompanyContext.Provider value={{ company, switchCompany: handleSwitch }}>
       <RepositoryProvider repo={repo}>
-        <HashRouter>
-          <AppLayout onSwitch={handleSwitch} />
-        </HashRouter>
+        <MonthProvider>
+          <HashRouter>
+            <AppLayout onSwitch={handleSwitch} />
+          </HashRouter>
+        </MonthProvider>
       </RepositoryProvider>
     </CompanyContext.Provider>
   )

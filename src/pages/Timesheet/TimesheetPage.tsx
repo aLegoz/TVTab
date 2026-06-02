@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, createContext, useContext } from 'react'
 import { Table, Select, Typography, Popover, Button, Space, Spin, message, Tooltip, Dropdown } from 'antd'
-import { LeftOutlined, RightOutlined } from '@ant-design/icons'
 import { useRepository } from '../../api/RepositoryContext'
 import { useLang } from '../../i18n/LangContext'
+import { useMonth } from '../../i18n/MonthContext'
 import type { Employee, TimesheetRecord, AttendanceCode, AppSettings } from '../../types'
 import { ATTENDANCE_CODES } from '../../types'
 
@@ -46,12 +46,19 @@ interface Schedule {
   end: string
 }
 
+interface CellCtx {
+  openCellKey: string | null
+  setOpenCellKey: (k: string | null) => void
+  copiedCell: CopiedCell | null
+  setCopiedCell: (c: CopiedCell | null) => void
+}
+const TimesheetCellCtx = createContext<CellCtx | null>(null)
+function useTimesheetCell() { return useContext(TimesheetCellCtx)! }
+
 export default function TimesheetPage() {
   const repo = useRepository()
   const { t } = useLang()
-  const now = new Date()
-  const [year, setYear] = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1)
+  const { year, month } = useMonth()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [recordMap, setRecordMap] = useState<RecordMap>(new Map())
   const [holidays, setHolidays] = useState<Set<string>>(new Set())
@@ -134,12 +141,12 @@ export default function TimesheetPage() {
     } catch (e: any) { message.error(e.message) }
   }
 
-  async function handleCellChange(
+  const handleCellChange = useCallback(async (
     emp: Employee, day: number,
     code: AttendanceCode, hours: number,
     arrivalTime?: string, departureTime?: string,
     overtimeCoeff?: number
-  ) {
+  ) => {
     const date = `${prefix}-${String(day).padStart(2, '0')}`
     try {
       await repo.saveTimesheetRecord({ employeeId: emp.id, date, code, hours, arrivalTime, departureTime, overtimeCoeff })
@@ -153,18 +160,9 @@ export default function TimesheetPage() {
         return next
       })
     } catch (e: any) { message.error(e.message) }
-  }
+  }, [repo, prefix])
 
-  function prevMonth() {
-    if (month === 1) { setYear(y => y - 1); setMonth(12) }
-    else setMonth(m => m - 1)
-  }
-  function nextMonth() {
-    if (month === 12) { setYear(y => y + 1); setMonth(1) }
-    else setMonth(m => m + 1)
-  }
-
-  const dayColumns = Array.from({ length: daysInMonth }, (_, i) => {
+  const dayColumns = useMemo(() => Array.from({ length: daysInMonth }, (_, i) => {
     const day = i + 1
     const weekend = isWeekend(year, month, day)
     const date = `${prefix}-${String(day).padStart(2, '0')}`
@@ -203,19 +201,12 @@ export default function TimesheetPage() {
             globalOvertimeCoeff={globalOvertimeCoeff}
             onChange={(c, h, arr, dep, oc) => handleCellChange(emp, day, c, h, arr, dep, oc)}
             cellKey={cellKey}
-            openCellKey={openCellKey}
-            setOpenCellKey={setOpenCellKey}
-            onTabNext={() => {
-              if (day < daysInMonth) setOpenCellKey(`${emp.id}_${day + 1}`)
-              else setOpenCellKey(null)
-            }}
-            copiedCell={copiedCell}
-            onCopy={(data) => setCopiedCell(data)}
+            onTabNext={day < daysInMonth ? `${emp.id}_${day + 1}` : null}
           />
         )
       }
     }
-  })
+  }), [year, month, daysInMonth, recordMap, holidays, workdays, schedule, globalOvertimeCoeff, t, handleCellChange, prefix])
 
   const columns = [
     {
@@ -252,14 +243,10 @@ export default function TimesheetPage() {
   ]
 
   return (
+    <TimesheetCellCtx.Provider value={{ openCellKey, setOpenCellKey, copiedCell, setCopiedCell }}>
     <Spin spinning={loading}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+      <div style={{ marginBottom: 10 }}>
         <Title level={4} style={{ margin: 0 }}>{t.timesheet.title}</Title>
-        <Button icon={<LeftOutlined />} size="small" onClick={prevMonth} />
-        <span style={{ fontWeight: 600, minWidth: 160, textAlign: 'center' }}>
-          {t.timesheet.months[month - 1]} {year}
-        </span>
-        <Button icon={<RightOutlined />} size="small" onClick={nextMonth} />
       </div>
 
       <div style={{
@@ -321,14 +308,14 @@ export default function TimesheetPage() {
         ))}
       </div>
     </Spin>
+    </TimesheetCellCtx.Provider>
   )
 }
 
 function CellEditor({
   code, hours, arrivalTime, departureTime, overtimeCoeff,
   weekend, color, schedule, globalOvertimeCoeff, onChange,
-  cellKey, openCellKey, setOpenCellKey, onTabNext,
-  copiedCell, onCopy
+  cellKey, onTabNext
 }: {
   code?: AttendanceCode
   hours: number
@@ -341,13 +328,10 @@ function CellEditor({
   globalOvertimeCoeff: number
   onChange: (code: AttendanceCode, hours: number, arrivalTime?: string, departureTime?: string, overtimeCoeff?: number) => void
   cellKey: string
-  openCellKey: string | null
-  setOpenCellKey: (key: string | null) => void
-  onTabNext: () => void
-  copiedCell: CopiedCell | null
-  onCopy: (data: CopiedCell) => void
+  onTabNext: string | null
 }) {
   const { t } = useLang()
+  const { openCellKey, setOpenCellKey, copiedCell, setCopiedCell } = useTimesheetCell()
   const open = openCellKey === cellKey
 
   const [selCode, setSelCode] = useState<AttendanceCode>(code ?? (weekend ? 'В' : 'Я'))
@@ -360,6 +344,7 @@ function CellEditor({
   const refAM = useRef<HTMLInputElement>(null)
   const refDH = useRef<HTMLInputElement>(null)
   const refDM = useRef<HTMLInputElement>(null)
+  const refSave = useRef<HTMLButtonElement>(null)
 
   const showTimes = selCode === 'Я'
 
@@ -371,7 +356,8 @@ function CellEditor({
       const [dh, dm] = dep.split(':').map(Number)
       setSelCode(code ?? (weekend ? 'В' : 'Я'))
       setArrH(ah); setArrM(am); setDepH(dh); setDepM(dm)
-      setTimeout(() => refAH.current?.focus(), 60)
+      if (showTimes) setTimeout(() => refAH.current?.focus(), 60)
+      else setTimeout(() => refSave.current?.focus(), 60)
     }
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -395,17 +381,38 @@ function CellEditor({
     setOpenCellKey(null)
   }
 
+  function goNext() { apply(); setOpenCellKey(onTabNext) }
+
   function handleKey(e: React.KeyboardEvent, field: 'arrH' | 'arrM' | 'depH' | 'depM') {
     if (e.key === 'Tab') {
       e.preventDefault()
+      e.stopPropagation()
       if (field === 'arrH') refAM.current?.focus()
       else if (field === 'arrM') refDH.current?.focus()
       else if (field === 'depH') refDM.current?.focus()
-      else { apply(); onTabNext() }
+      else goNext()
     } else if (e.key === 'Enter') {
       apply()
     } else if (e.key === 'Escape') {
       setOpenCellKey(null)
+    }
+  }
+
+  function handleContentKey(e: React.KeyboardEvent) {
+    if (e.key === 'Tab' && !showTimes) {
+      e.preventDefault()
+      goNext()
+    }
+    if (e.key === 'Escape') setOpenCellKey(null)
+    if (e.key === 'Enter' && !showTimes) apply()
+    if (e.ctrlKey && e.key === 'c') {
+      if (code) setCopiedCell({ code, hours, arrivalTime, departureTime })
+    }
+    if (e.ctrlKey && e.key === 'v') {
+      if (copiedCell) {
+        onChange(copiedCell.code, copiedCell.hours, copiedCell.arrivalTime, copiedCell.departureTime, undefined)
+        setOpenCellKey(null)
+      }
     }
   }
 
@@ -416,6 +423,7 @@ function CellEditor({
   }
 
   const content = (
+    <div onKeyDown={handleContentKey}>
     <Space direction="vertical" size={6} style={{ width: 210 }}>
       <Select
         value={selCode}
@@ -468,8 +476,9 @@ function CellEditor({
         </>
       )}
 
-      <Button type="primary" size="small" block onClick={apply}>{t.timesheet.save}</Button>
+      <Button ref={refSave} type="primary" size="small" block onClick={apply}>{t.timesheet.save}</Button>
     </Space>
+    </div>
   )
 
   const contextMenuItems = [
@@ -477,7 +486,7 @@ function CellEditor({
       key: 'copy',
       label: (t.timesheet as any).copy ?? 'Копировать',
       disabled: !code,
-      onClick: () => { if (code) onCopy({ code, hours, arrivalTime, departureTime }) }
+      onClick: () => { if (code) setCopiedCell({ code, hours, arrivalTime, departureTime }) }
     },
     {
       key: 'paste',
@@ -499,7 +508,7 @@ function CellEditor({
       onOpenChange={(o) => setOpenCellKey(o ? cellKey : null)}>
       <Dropdown trigger={['contextMenu']} menu={{ items: contextMenuItems }}>
         <div
-          className={`timesheet-cell${weekend && !code ? ' weekend' : ''}`}
+          className={`timesheet-cell${open ? ' open' : ''}${weekend && !code ? ' weekend' : ''}`}
           style={{ background: color || (code ? undefined : (weekend ? '#f5f5f5' : undefined)) }}
         >
           {code || (weekend ? 'В' : '')}

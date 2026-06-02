@@ -4,12 +4,13 @@ import {
   Descriptions, Divider, Space, Statistic, InputNumber, Tooltip, Dropdown
 } from 'antd'
 import {
-  LeftOutlined, RightOutlined, FileExcelOutlined, FilePdfOutlined,
+  FileExcelOutlined, FilePdfOutlined,
   InfoCircleOutlined, DownloadOutlined
 } from '@ant-design/icons'
 import { useRepository } from '../../api/RepositoryContext'
 import { useCompany } from '../../App'
 import { useLang } from '../../i18n/LangContext'
+import { useMonth } from '../../i18n/MonthContext'
 import { ATTENDANCE_CODES } from '../../types'
 import type { SalarySummary, SalaryDetail, DayRecord } from '../../types'
 import dayjs from 'dayjs'
@@ -27,10 +28,8 @@ export default function SalaryPage() {
   const repo = useRepository()
   const { company } = useCompany()
   const { t, lang } = useLang()
+  const { year, month } = useMonth()
   const cur = company.currency
-  const now = new Date()
-  const [year, setYear] = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth() + 1)
   const [data, setData] = useState<SalarySummary[]>([])
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -73,15 +72,6 @@ export default function SalaryPage() {
   const loadRef = useRef(load)
   useEffect(() => { loadRef.current = load }, [load])
   useEffect(() => repo.subscribeToChanges(() => loadRef.current()), [repo])
-
-  function prevMonth() {
-    if (month === 1) { setYear(y => y - 1); setMonth(12) }
-    else setMonth(m => m - 1)
-  }
-  function nextMonth() {
-    if (month === 12) { setYear(y => y + 1); setMonth(1) }
-    else setMonth(m => m + 1)
-  }
 
   async function openDetail(summary: SalarySummary) {
     setDetailOpen(true)
@@ -202,11 +192,6 @@ export default function SalaryPage() {
     <Spin spinning={loading || exporting}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <Title level={4} style={{ margin: 0 }}>{t.salary.title}</Title>
-        <Button icon={<LeftOutlined />} size="small" onClick={prevMonth} />
-        <span style={{ fontWeight: 600, minWidth: 160, textAlign: 'center' }}>
-          {t.timesheet.months[month - 1]} {year}
-        </span>
-        <Button icon={<RightOutlined />} size="small" onClick={nextMonth} />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 16, flexWrap: 'wrap' }}>
           <Tooltip title={coeffIsCustom ? undefined : t.salary.overtimeCoeffGlobal}>
