@@ -128,7 +128,7 @@ export default function SettingsPage() {
         URL.revokeObjectURL(url)
       } else {
         const path = await window.api.backup.exportToFile()
-        if (path) message.success(`Збережено: ${path}`)
+        if (path) message.success(path)
       }
     } catch (e: any) {
       message.error(e.message)
@@ -147,7 +147,7 @@ export default function SettingsPage() {
       } else {
         await window.api.backup.importData(data)
       }
-      message.success('Дані відновлено з резервної копії')
+      message.success(t.settings.importSuccess)
     } catch (e: any) {
       message.error(e.message)
     } finally {
@@ -163,10 +163,10 @@ export default function SettingsPage() {
         const res = await fetch(`${serverBaseUrl}/restore-from-audit`, { method: 'POST' })
         const json = await res.json()
         if (!res.ok) throw new Error(json.error)
-        message.success(`Відновлено ${json.restored} подій (помилок: ${json.errors})`)
+        message.success(t.settings.restoreSuccess.replace('{n}', json.restored).replace('{e}', json.errors))
       } else {
         const result = await window.api.backup.restoreFromAudit()
-        message.success(`Відновлено ${result.restored} подій (помилок: ${result.errors})`)
+        message.success(t.settings.restoreSuccess.replace('{n}', result.restored).replace('{e}', result.errors))
       }
     } catch (e: any) {
       message.error(e.message)
@@ -185,10 +185,10 @@ export default function SettingsPage() {
         await fetch(`${serverBaseUrl}/restore-from-audit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entries }) })
       } else {
         const result = await window.api.backup.restoreFromAudit()
-        message.success(`Відновлено ${result.restored} подій (помилок: ${result.errors})`)
+        message.success(t.settings.restoreSuccess.replace('{n}', result.restored).replace('{e}', result.errors))
         return
       }
-      message.success(`Відновлено ${entries.length} подій з файлу`)
+      message.success(t.settings.restoreFileSuccess.replace('{n}', String(entries.length)))
     } catch (e: any) {
       message.error(e.message)
     } finally {
@@ -298,18 +298,18 @@ export default function SettingsPage() {
       <input ref={restoreRef} type="file" accept=".jsonl,.log,.txt" style={{ display: 'none' }}
         onChange={(e) => e.target.files?.[0] && handleRestoreFromFile(e.target.files[0])} />
 
-      <Card size="small" title="Резервне копіювання" style={{ marginTop: 16 }}>
+      <Card size="small" title={t.settings.backupTitle} style={{ marginTop: 16 }}>
         <Space direction="vertical" style={{ width: '100%' }} size={12}>
           <div>
             <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
-              Знімок бази даних (JSON) — повне відновлення або перенесення на інший комп'ютер
+              {t.settings.backupJsonDesc}
             </Text>
             <Space>
               <Button icon={<DownloadOutlined />} loading={backupLoading} onClick={handleExport}>
-                Експорт JSON
+                {t.settings.exportJson}
               </Button>
               <Button icon={<UploadOutlined />} onClick={() => importRef.current?.click()}>
-                Імпорт JSON
+                {t.settings.importJson}
               </Button>
             </Space>
           </div>
@@ -318,15 +318,15 @@ export default function SettingsPage() {
 
           <div>
             <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
-              Журнал аудиту (JSONL) — покрокове відновлення всіх змін з початку
+              {t.settings.auditDesc}
             </Text>
             {isRemote ? (
               <Space>
                 <Button icon={<DownloadOutlined />} href={`${serverBaseUrl}/audit/download`} target="_blank">
-                  Завантажити журнал
+                  {t.settings.downloadAudit}
                 </Button>
                 <Button icon={<HistoryOutlined />} loading={backupLoading} onClick={handleRestoreAudit}>
-                  Відновити з журналу
+                  {t.settings.restoreAudit}
                 </Button>
               </Space>
             ) : (
@@ -334,18 +334,18 @@ export default function SettingsPage() {
                 {auditLogPath && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Text code style={{ fontSize: 11, wordBreak: 'break-all' }}>{auditLogPath}</Text>
-                    <Tooltip title="Скопіювати шлях">
+                    <Tooltip title={t.settings.copyPath}>
                       <Button size="small" icon={<CopyOutlined />}
-                        onClick={() => { navigator.clipboard.writeText(auditLogPath ?? ''); message.success('Скопійовано') }} />
+                        onClick={() => { navigator.clipboard.writeText(auditLogPath ?? ''); message.success(t.settings.copied) }} />
                     </Tooltip>
                   </div>
                 )}
                 <Space>
                   <Button icon={<HistoryOutlined />} loading={backupLoading} onClick={handleRestoreAudit}>
-                    Відновити з журналу
+                    {t.settings.restoreAudit}
                   </Button>
                   <Button icon={<UploadOutlined />} onClick={() => restoreRef.current?.click()}>
-                    Відновити з файлу журналу
+                    {t.settings.restoreFromFile}
                   </Button>
                 </Space>
               </Space>

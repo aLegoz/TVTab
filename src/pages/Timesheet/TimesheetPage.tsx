@@ -520,13 +520,13 @@ function CellEditor({
   const contextMenuItems = [
     {
       key: 'copy',
-      label: (t.timesheet as any).copy ?? 'Копировать',
+      label: t.timesheet.copy,
       disabled: !code,
       onClick: () => { if (code) setCopiedCell({ code, hours, arrivalTime, departureTime }) }
     },
     {
       key: 'paste',
-      label: (t.timesheet as any).paste ?? 'Вставить',
+      label: t.timesheet.paste,
       disabled: !copiedCell,
       onClick: () => {
         if (copiedCell) {
@@ -537,7 +537,7 @@ function CellEditor({
     { type: 'divider' as const },
     {
       key: 'clear',
-      label: (t.timesheet as any).clear ?? 'Очистити',
+      label: t.timesheet.clear,
       disabled: !code,
       danger: true,
       onClick: () => { if (onDelete) onDelete() }
@@ -564,7 +564,7 @@ function CellEditor({
                   <div>{departureTime}</div>
                 </>
               ) : displayHours ? (
-                <div>{displayHours}ч</div>
+                <div>{displayHours}{t.timesheet.hoursUnit}</div>
               ) : null}
             </div>
           )}

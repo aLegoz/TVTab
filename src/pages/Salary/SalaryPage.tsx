@@ -338,12 +338,12 @@ export default function SalaryPage() {
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
             {advanceEmployee && advanceEmployee.advance > 0 && (
               <Button danger onClick={clearAdvance} loading={advanceSaving}>
-                Очистити
+                {t.salary.clearAdvance}
               </Button>
             )}
-            <Button onClick={() => setAdvanceDrawerOpen(false)}>Скасувати</Button>
+            <Button onClick={() => setAdvanceDrawerOpen(false)}>{t.salary.cancel}</Button>
             <Button type="primary" onClick={confirmAdvance} loading={advanceSaving}>
-              Зберегти
+              {t.settings.save}
             </Button>
           </Space>
         }
@@ -383,7 +383,7 @@ export default function SalaryPage() {
               background: '#fff7e6', border: '1px solid #ffd591', borderRadius: 8,
               padding: '12px 16px'
             }}>
-              <div style={{ fontSize: 12, color: '#888' }}>До виплати:</div>
+              <div style={{ fontSize: 12, color: '#888' }}>{t.salary.toPay}:</div>
               <div style={{ fontSize: 20, fontWeight: 700, color: '#1677ff' }}>
                 {fmt(advanceEmployee.salary - (advanceAmount ?? 0))} {company.currency}
               </div>

@@ -226,7 +226,7 @@ export default function CompanySelectPage({ onSelect }: Props) {
                   onPressEnter={() => connectToServer(serverUrl)}
                   disabled={connected}
                 />
-                <Tooltip title="Знайти сервер в мережі">
+                <Tooltip title={t.company.findServer}>
                   <Button
                     icon={<WifiOutlined />}
                     onClick={scanNetwork}
@@ -325,15 +325,15 @@ export default function CompanySelectPage({ onSelect }: Props) {
 
       {/* Network scan results */}
       <Modal
-        title={<><WifiOutlined /> Сервери TVTab в мережі</>}
+        title={<><WifiOutlined /> {t.company.scanTitle}</>}
         open={scanModal}
         onCancel={() => setScanModal(false)}
         footer={null}
         width={400}
       >
-        <Spin spinning={scanning} tip="Сканування мережі... (3 сек)">
+        <Spin spinning={scanning} tip={t.company.scanning}>
           {!scanning && foundServers.length === 0 && (
-            <Empty description="Серверів не знайдено" image={Empty.PRESENTED_IMAGE_SIMPLE}
+            <Empty description={t.company.noServers} image={Empty.PRESENTED_IMAGE_SIMPLE}
               style={{ margin: '16px 0' }} />
           )}
           {foundServers.length > 0 && (
@@ -344,7 +344,7 @@ export default function CompanySelectPage({ onSelect }: Props) {
                   actions={[
                     <Button type="primary" size="small"
                       onClick={() => { setServerUrl(url); setScanModal(false) }}>
-                      Вибрати
+                      {t.company.selectServer}
                     </Button>
                   ]}
                 >
