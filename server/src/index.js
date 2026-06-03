@@ -730,6 +730,42 @@ app.get('/companies/:id/export/detail-pdf/:year/:month/:empId', (req, res) => {
   const fmt2 = (n) => n.toLocaleString('uk-UA', {minimumFractionDigits:2, maximumFractionDigits:2})
   const fmtH = (n) => Number.isInteger(n)?String(n):n.toFixed(2).replace(/\.?0+$/,'')
   const today = new Date().toLocaleDateString('uk-UA', {day:'2-digit',month:'2-digit',year:'numeric'})
+  const LI = {
+    ru:{ title:'РАСЧЁТНЫЙ ЛИСТОК',secCond:'Условия начисления',secTs:'Табель учёта рабочего времени',secCalc:'Начисления',
+         worker:'Работник:',monthLbl:'Месяц:',posLbl:'Должность:',dateLbl:'Дата формирования:',
+         payType:'Вид оплаты:',rateLbl:'Ставка:',hrDerived:'Часовая ставка',normLbl:'Норма месяца:',workedLbl:'Отработано:',
+         inclOt:'(в т.ч. сверхурочные: %s ч.)',inclVac:'отпуск: %s дн.',inclSick:'больничный: %s дн.',
+         rateH:'Почасовая',rateM:'Месячная',uH:'/ч',uM:'/мес.',uDays:'раб. дн.',uHrs:'ч.',
+         base:'Основная зарплата:',ot:'Сверхурочные:',vac:'Отпускные:',sick:'Больничные:',
+         total:'НАЧИСЛЕНО ИТОГО',advLbl:'Аванс (выдан %s)',net:'К ВЫПЛАТЕ',
+         sigAcc:'Бухгалтер',sigEmp:'Ознакомлен',legend:'Обозначения:',
+         colDate:'Дата',colCode:'Код',colAr:'Приход',colDep:'Уход',colH:'Ч.',
+         codes:{'Я':'рабочий день','О':'отпуск','Б':'больничный','ОЗ':'отпуск за свой счёт','Н':'прогул','НН':'невыясненное отсутствие','В':'выходной','Св':'праздник'},
+         dow:['Вс','Пн','Вт','Ср','Чт','Пт','Сб'] },
+    uk:{ title:'РОЗРАХУНКОВИЙ ЛИСТОК',secCond:'Умови нарахування',secTs:'Табель обліку часу',secCalc:'Нарахування',
+         worker:'Працівник:',monthLbl:'Місяць:',posLbl:'Посада:',dateLbl:'Дата формування:',
+         payType:'Вид оплати:',rateLbl:'Ставка:',hrDerived:'Годинна ставка',normLbl:'Норма місяця:',workedLbl:'Відпрацьовано:',
+         inclOt:'(у т.ч. понаднормові: %s год.)',inclVac:'відпустка: %s дн.',inclSick:'лікарняний: %s дн.',
+         rateH:'Погодинна',rateM:'Місячна',uH:'/год',uM:'/міс.',uDays:'роб. дн.',uHrs:'год.',
+         base:'Основна зарплата:',ot:'Понаднормові:',vac:'Відпускні:',sick:'Лікарняні:',
+         total:'НАРАХОВАНО РАЗОМ',advLbl:'Аванс (видано %s)',net:'ДО ВИПЛАТИ',
+         sigAcc:'Бухгалтер',sigEmp:'Ознайомлений',legend:'Позначення:',
+         colDate:'Дата',colCode:'Код',colAr:'Прихід',colDep:'Відхід',colH:'Год.',
+         codes:{'Я':'робочий день','О':'відпустка','Б':'лікарняний','ОЗ':'відпустка за свій рахунок','Н':'прогул','НН':"нез'ясована відсутність",'В':'вихідний','Св':'свято'},
+         dow:['Нд','Пн','Вт','Ср','Чт','Пт','Сб'] },
+    en:{ title:'PAY SLIP',secCond:'Pay conditions',secTs:'Attendance record',secCalc:'Accruals',
+         worker:'Employee:',monthLbl:'Month:',posLbl:'Position:',dateLbl:'Issued:',
+         payType:'Pay type:',rateLbl:'Rate:',hrDerived:'Hourly rate',normLbl:'Month norm:',workedLbl:'Worked:',
+         inclOt:'(incl. overtime: %s hrs.)',inclVac:'vacation: %s days',inclSick:'sick: %s days',
+         rateH:'Hourly',rateM:'Monthly',uH:'/hr',uM:'/mo.',uDays:'work days',uHrs:'hrs.',
+         base:'Base salary:',ot:'Overtime:',vac:'Vacation pay:',sick:'Sick pay:',
+         total:'TOTAL ACCRUED',advLbl:'Advance (given %s)',net:'NET PAY',
+         sigAcc:'Accountant',sigEmp:'Acknowledged',legend:'Legend:',
+         colDate:'Date',colCode:'Code',colAr:'Arrival',colDep:'Departure',colH:'Hrs.',
+         codes:{'Я':'work day','О':'vacation','Б':'sick leave','ОЗ':'unpaid leave','Н':'no-show','НН':'unexplained absence','В':'day off','Св':'holiday'},
+         dow:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'] },
+  }
+  const li = LI[lang] || LI.uk
 
   // advance
   const advRow = db.prepare('SELECT amount,given_date FROM advances WHERE employee_id=? AND year=? AND month=?').get(emp.id, y, m)
@@ -740,8 +776,6 @@ app.get('/companies/:id/export/detail-pdf/:year/:month/:empId', (req, res) => {
   const daysInMonth = new Date(y, m, 0).getDate()
   const holSet = new Set(holidays), wdSet = new Set(workdays2)
   const recMap = {}; for (const r of s.rows) recMap[r.date] = r
-  const DOW = ['Нд','Пн','Вт','Ср','Чт','Пт','Сб']
-  const CODE_LABELS = {'Я':'робочий день','О':'відпустка','Б':'лікарняний','ОЗ':'відпустка за свій рахунок','Н':'прогул','НН':"нез'ясована відсутність",'В':'вихідний','Св':'свято'}
   const codesUsed = new Set()
   let attendRows = ''
   for (let d=1; d<=daysInMonth; d++) {
@@ -754,18 +788,20 @@ app.get('/companies/:id/export/detail-pdf/:year/:month/:empId', (req, res) => {
     if (code) codesUsed.add(code)
     const isWorked = code==='Я'
     const cls = isWe||isHol?'we':d%2===0?'ev':''
-    attendRows += `<tr class="${cls}"><td>${d}</td><td style="text-align:left">${String(d).padStart(2,'0')}.${String(m).padStart(2,'0')} ${DOW[dow]}</td><td><b>${code||'—'}</b></td><td>${rec?.arrival_time||'—'}</td><td>${rec?.departure_time||'—'}</td><td style="text-align:right">${isWorked?`<b>${fmtH(rec.hours)}</b>`:'—'}</td></tr>`
+    attendRows += `<tr class="${cls}"><td>${d}</td><td style="text-align:left">${String(d).padStart(2,'0')}.${String(m).padStart(2,'0')} ${li.dow[dow]}</td><td><b>${code||'—'}</b></td><td>${rec?.arrival_time||'—'}</td><td>${rec?.departure_time||'—'}</td><td style="text-align:right">${isWorked?`<b>${fmtH(rec.hours)}</b>`:'—'}</td></tr>`
   }
-  const legendText = [...codesUsed].filter(c=>CODE_LABELS[c]).map(c=>`<b>${c}</b> — ${CODE_LABELS[c]}`).join(' &nbsp;|&nbsp; ')
+  const legendText = [...codesUsed].filter(c=>li.codes[c]).map(c=>`<b>${c}</b> — ${li.codes[c]}`).join(' &nbsp;|&nbsp; ')
 
   // calculation blocks
-  const rateTypeLabel = s.rateType==='hourly'?'Погодинна':'Місячна'
-  const rateUnitLabel = s.rateType==='hourly'?`${cur}/год`:`${cur}/міс.`
-  const monthlyNote = s.rateType==='monthly'?`<div><span class="lbl">Годинна ставка (${fmt2(s.rate)} ÷ ${normHours} год): </span><b>${fmt2(s.derivedHourlyRate)} ${cur}/год</b></div>`:''
-  const otBlock = s.overtimeHours>0?`<div class="cline"><span class="desc">Понаднормові: ${fmt2(s.derivedHourlyRate)} ${cur}/год × ${fmtH(s.overtimeHours)} год × ${overtimeCoeff}</span><span class="amt">${fmt2(s.overtimeSalary)} ${cur}</span></div>`:''
-  const vacBlock = s.vacationDays>0?`<div class="cline"><span class="desc">Відпускні: ${fmt2(s.derivedHourlyRate)} ${cur}/год × ${hoursPerDay} год × ${s.vacationDays} дн. × ${s.vacationCoeff}</span><span class="amt">${fmt2(s.vacationPay)} ${cur}</span></div>`:''
-  const sickBlock = s.sickDays>0?`<div class="cline"><span class="desc">Лікарняні: ${fmt2(s.derivedHourlyRate)} ${cur}/год × ${hoursPerDay} год × ${s.sickDays} дн. × ${s.sickCoeff}</span><span class="amt">${fmt2(s.sickPay)} ${cur}</span></div>`:''
-  const advBlock = advance>0?`<div class="adv"><span>Аванс (видано ${advRow.given_date?new Date(advRow.given_date).toLocaleDateString('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}):'—'})</span><span>− ${fmt2(advance)} ${cur}</span></div>`:''
+  const rateTypeLabel = s.rateType==='hourly'?li.rateH:li.rateM
+  const rateUnitLabel = s.rateType==='hourly'?li.uH:li.uM
+  const monthlyNote = s.rateType==='monthly'?`<div><span class="lbl">${li.hrDerived} (${fmt2(s.rate)} ÷ ${normHours} ${li.uHrs}): </span><b>${fmt2(s.derivedHourlyRate)} ${cur}${li.uH}</b></div>`:''
+  const workedNote = `${s.workedDays} ${li.uDays} / ${fmtH(s.workedHours)} ${li.uHrs}${s.overtimeHours>0?' '+li.inclOt.replace('%s',fmtH(s.overtimeHours)):''}${s.vacationDays>0?' &nbsp;|&nbsp; '+li.inclVac.replace('%s',s.vacationDays):''}${s.sickDays>0?' &nbsp;|&nbsp; '+li.inclSick.replace('%s',s.sickDays):''}`
+  const otBlock = s.overtimeHours>0?`<div class="cline"><span class="desc">${li.ot} ${fmt2(s.derivedHourlyRate)} ${cur}${li.uH} × ${fmtH(s.overtimeHours)} ${li.uHrs} × ${overtimeCoeff}</span><span class="amt">${fmt2(s.overtimeSalary)} ${cur}</span></div>`:''
+  const vacBlock = s.vacationDays>0?`<div class="cline"><span class="desc">${li.vac} ${fmt2(s.derivedHourlyRate)} ${cur}${li.uH} × ${hoursPerDay} ${li.uHrs} × ${s.vacationDays} ${li.uDays} × ${s.vacationCoeff}</span><span class="amt">${fmt2(s.vacationPay)} ${cur}</span></div>`:''
+  const sickBlock = s.sickDays>0?`<div class="cline"><span class="desc">${li.sick} ${fmt2(s.derivedHourlyRate)} ${cur}${li.uH} × ${hoursPerDay} ${li.uHrs} × ${s.sickDays} ${li.uDays} × ${s.sickCoeff}</span><span class="amt">${fmt2(s.sickPay)} ${cur}</span></div>`:''
+  const advDateStr = advRow?.given_date?new Date(advRow.given_date).toLocaleDateString('uk-UA',{day:'2-digit',month:'2-digit',year:'numeric'}):'—'
+  const advBlock = advance>0?`<div class="adv"><span>${li.advLbl.replace('%s',advDateStr)}</span><span>− ${fmt2(advance)} ${cur}</span></div>`:''
 
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>
 *{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:9px;color:#000;line-height:1.35}
@@ -786,31 +822,31 @@ tr.we td{background:#e8e8e8;color:#555}tr.ev td{background:#f6f6f6}
 .sig{border-top:1px solid #aaa;padding-top:2px;text-align:center;color:#555}
 @page{size:A4 portrait;margin:8mm 10mm}@media print{*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}
 </style></head><body>
-<div class="hdr"><h1>РОЗРАХУНКОВИЙ ЛИСТОК</h1><div class="sub">${company.name||''}</div></div>
+<div class="hdr"><h1>${li.title}</h1><div class="sub">${company.name||''}</div></div>
 <div class="meta">
-<div><span class="lbl">Працівник: </span><b>${emp.full_name}</b></div><div><span class="lbl">Місяць: </span><b>${months[m-1]} ${year}</b></div>
-<div><span class="lbl">Посада: </span>${emp.position||'—'}</div><div><span class="lbl">Дата формування: </span>${today}</div>
+<div><span class="lbl">${li.worker} </span><b>${emp.full_name}</b></div><div><span class="lbl">${li.monthLbl} </span><b>${months[m-1]} ${year}</b></div>
+<div><span class="lbl">${li.posLbl} </span>${emp.position||'—'}</div><div><span class="lbl">${li.dateLbl} </span>${today}</div>
 </div>
-<div class="sec">Умови нарахування</div>
+<div class="sec">${li.secCond}</div>
 <div class="info">
-<div><span class="lbl">Вид оплати: </span>${rateTypeLabel}</div>
-<div><span class="lbl">Ставка: </span><b>${fmt2(s.rate)} ${rateUnitLabel}</b></div>
+<div><span class="lbl">${li.payType} </span>${rateTypeLabel}</div>
+<div><span class="lbl">${li.rateLbl} </span><b>${fmt2(s.rate)} ${cur}${rateUnitLabel}</b></div>
 ${monthlyNote}
-<div><span class="lbl">Норма місяця: </span>${normDays} роб. дн. / ${normHours} год.</div>
-<div><span class="lbl">Відпрацьовано: </span>${s.workedDays} дн. / ${fmtH(s.workedHours)} год.${s.overtimeHours>0?` (у т.ч. понаднормові: ${fmtH(s.overtimeHours)} год.)`:''}${s.vacationDays>0?` &nbsp;|&nbsp; відпустка: ${s.vacationDays} дн.`:''}${s.sickDays>0?` &nbsp;|&nbsp; лікарняний: ${s.sickDays} дн.`:''}</div>
+<div><span class="lbl">${li.normLbl} </span>${normDays} ${li.uDays} / ${normHours} ${li.uHrs}</div>
+<div><span class="lbl">${li.workedLbl} </span>${workedNote}</div>
 </div>
-<div class="sec">Табель обліку часу</div>
-<table><thead><tr><th>№</th><th>Дата</th><th>Код</th><th>Прихід</th><th>Відхід</th><th>Год.</th></tr></thead><tbody>${attendRows}</tbody></table>
-<div class="legend">Позначення: ${legendText}</div>
-<div class="sec">Нарахування</div>
+<div class="sec">${li.secTs}</div>
+<table><thead><tr><th>№</th><th>${li.colDate}</th><th>${li.colCode}</th><th>${li.colAr}</th><th>${li.colDep}</th><th>${li.colH}</th></tr></thead><tbody>${attendRows}</tbody></table>
+<div class="legend">${li.legend} ${legendText}</div>
+<div class="sec">${li.secCalc}</div>
 <div class="calc">
-<div class="cline"><span class="desc">Основна зарплата: ${fmt2(s.derivedHourlyRate)} ${cur}/год × ${fmtH(s.regularHours)} год</span><span class="amt">${fmt2(s.regularSalary)} ${cur}</span></div>
+<div class="cline"><span class="desc">${li.base} ${fmt2(s.derivedHourlyRate)} ${cur}${li.uH} × ${fmtH(s.regularHours)} ${li.uHrs}</span><span class="amt">${fmt2(s.regularSalary)} ${cur}</span></div>
 ${otBlock}${vacBlock}${sickBlock}
-<div class="ctotal"><span>НАРАХОВАНО РАЗОМ</span><span>${fmt2(s.salary)} ${cur}</span></div>
+<div class="ctotal"><span>${li.total}</span><span>${fmt2(s.salary)} ${cur}</span></div>
 </div>
 ${advBlock}
-<div class="netpay"><span>ДО ВИПЛАТИ</span><span>${fmt2(toPay)} ${cur}</span></div>
-<div class="sigs"><div class="sig">Бухгалтер &nbsp; _________________________________</div><div class="sig">Ознайомлений &nbsp; _________________________________</div></div>
+<div class="netpay"><span>${li.net}</span><span>${fmt2(toPay)} ${cur}</span></div>
+<div class="sigs"><div class="sig">${li.sigAcc} &nbsp; _________________________________</div><div class="sig">${li.sigEmp} &nbsp; _________________________________</div></div>
 <script>window.print()</script></body></html>`
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8')
