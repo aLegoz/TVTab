@@ -9,10 +9,17 @@ interface LangCtx {
 
 const LangContext = createContext<LangCtx | null>(null)
 
+function detectLang(): Lang {
+  const saved = localStorage.getItem('tvtab_lang') as Lang | null
+  if (saved === 'ru' || saved === 'uk' || saved === 'en') return saved
+  const browser = navigator.language.slice(0, 2).toLowerCase()
+  if (browser === 'ru') return 'ru'
+  if (browser === 'en') return 'en'
+  return 'uk'
+}
+
 export function LangProvider({ children }: { children: ReactNode }) {
-  const [lang, setLangState] = useState<Lang>(
-    () => (localStorage.getItem('tvtab_lang') as Lang) || 'uk'
-  )
+  const [lang, setLangState] = useState<Lang>(detectLang)
 
   function setLang(l: Lang) {
     localStorage.setItem('tvtab_lang', l)
