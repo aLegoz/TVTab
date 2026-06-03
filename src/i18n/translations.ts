@@ -294,7 +294,7 @@ const uk: typeof ru = {
       'Я': 'Явка', 'В': 'Вихідний', 'О': 'Відпустка', 'Б': 'Лікарняний',
       'ОЗ': 'Без збереження', 'Н': 'Неявка (поваж.)', 'НН': 'Прогул',
     } as Record<string, string>,
-    codeDisplay: { 'Б': 'Л', 'ОЗ': 'БЗ' } as Record<string, string>,
+    codeDisplay: { 'О': 'Ві', 'Б': 'Л', 'ОЗ': 'БЗ' } as Record<string, string>,
     copy: 'Копіювати',
     paste: 'Вставити',
     clear: 'Очистити',

@@ -338,7 +338,7 @@ export default function TimesheetPage() {
         {ATTENDANCE_CODES.map((c) => (
           <span key={c.code}
             style={{ background: c.color, border: '1px solid #d9d9d9', borderRadius: 3, padding: '2px 6px', fontSize: 12 }}>
-            <b>{c.code}</b> — {t.timesheet.attendance[c.code] ?? c.label}
+            <b>{t.timesheet.codeDisplay?.[c.code] ?? c.code}</b> — {t.timesheet.attendance[c.code] ?? c.label}
           </span>
         ))}
       </div>
@@ -467,7 +467,7 @@ function CellEditor({
         style={{ width: '100%' }}
         options={ATTENDANCE_CODES.map((c) => ({
           value: c.code,
-          label: `${c.code} — ${t.timesheet.attendance[c.code] ?? c.label}`
+          label: `${t.timesheet.codeDisplay?.[c.code] ?? c.code} — ${t.timesheet.attendance[c.code] ?? c.label}`
         }))}
       />
 
