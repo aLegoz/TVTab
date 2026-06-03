@@ -95,7 +95,7 @@ export default function CompanySelectPage({ onSelect }: Props) {
       localStorage.setItem('tvtab.mode', 'remote')
       localStorage.setItem('tvtab.serverUrl', url)
     } catch (e: any) {
-      message.error(`Не вдалося підключитися: ${e.message}`)
+      message.error(`${t.company.connectError}: ${e.message}`)
       setConnected(false)
     } finally {
       setConnecting(false)

@@ -104,7 +104,7 @@ export default function SalaryPage() {
     if (val === null || val < 0) return
     await repo.setMonthVacationCoeff(year, month, val)
     setVacCoeff(val)
-    message.success((t.salary as any).vacationCoeffSaved)
+    message.success(t.salary.vacationCoeffSaved)
     load()
   }
 
@@ -112,7 +112,7 @@ export default function SalaryPage() {
     if (val === null || val < 0) return
     await repo.setMonthSickCoeff(year, month, val)
     setSickCoeff(val)
-    message.success((t.salary as any).sickCoeffSaved)
+    message.success(t.salary.sickCoeffSaved)
     load()
   }
 
@@ -128,7 +128,7 @@ export default function SalaryPage() {
     setAdvanceSaving(true)
     try {
       await repo.setAdvance(advanceEmployee.employee.id, year, month, advanceAmount ?? 0, advanceDate)
-      message.success((t.salary as any).advanceSaved)
+      message.success(t.salary.advanceSaved)
       setAdvanceDrawerOpen(false)
       load()
     } finally {
@@ -207,7 +207,7 @@ export default function SalaryPage() {
     { title: t.salary.colVacation,dataIndex: 'vacationDays', key: 'vac',   width: 65, align: 'center' as const },
     { title: t.salary.colSick,    dataIndex: 'sickDays',     key: 'sick',  width: 60, align: 'center' as const },
     {
-      title: (t.salary as any).colAdvance, key: 'advance', width: 150, align: 'right' as const,
+      title: t.salary.colAdvance, key: 'advance', width: 150, align: 'right' as const,
       render: (_: any, r: SalarySummary) => (
         <div style={{ cursor: 'pointer', textAlign: 'right' }} onClick={() => openAdvanceDrawer(r)}>
           <Tag color={r.advance > 0 ? 'orange' : 'default'} style={{ minWidth: 80, textAlign: 'right' }}>
@@ -267,7 +267,7 @@ export default function SalaryPage() {
             style={{ width: 72 }} size="small"
           />
           <span style={{ fontSize: 12, color: vacCoeff !== null ? '#333' : '#999', marginLeft: 8 }}>
-            {(t.salary as any).vacationCoeffLabel}
+            {t.salary.vacationCoeffLabel}
           </span>
           <InputNumber
             min={0} max={5} step={0.1} precision={2}
@@ -278,7 +278,7 @@ export default function SalaryPage() {
             style={{ width: 72 }} size="small"
           />
           <span style={{ fontSize: 12, color: sickCoeff !== null ? '#333' : '#999', marginLeft: 8 }}>
-            {(t.salary as any).sickCoeffLabel}
+            {t.salary.sickCoeffLabel}
           </span>
           <InputNumber
             min={0} max={5} step={0.1} precision={2}
@@ -329,7 +329,7 @@ export default function SalaryPage() {
 
       {/* Drawer авансу */}
       <Drawer
-        title={advanceEmployee ? `${advanceEmployee.employee.fullName} — ${(t.salary as any).colAdvance}` : ''}
+        title={advanceEmployee ? `${advanceEmployee.employee.fullName} — ${t.salary.colAdvance}` : ''}
         open={advanceDrawerOpen}
         onClose={() => setAdvanceDrawerOpen(false)}
         width={360}
@@ -351,7 +351,7 @@ export default function SalaryPage() {
         <Space direction="vertical" size={16} style={{ width: '100%' }}>
           <div>
             <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>
-              {(t.salary as any).colAdvance}
+              {t.salary.colAdvance}
             </div>
             <InputNumber
               min={0}
@@ -367,7 +367,7 @@ export default function SalaryPage() {
           </div>
           <div>
             <div style={{ fontSize: 12, color: '#888', marginBottom: 4 }}>
-              {(t.salary as any).advanceDateLabel}
+              {t.salary.advanceDateLabel}
             </div>
             <DatePicker
               value={advanceDate ? dayjs(advanceDate) : null}
@@ -549,7 +549,7 @@ function DetailContent({ detail, cur }: { detail: SalaryDetail; cur: string }) {
         {/* Відпускні */}
         {detail.vacationDays > 0 && (
           <div style={{ fontSize: 13, color: '#d48b08', marginBottom: 4 }}>
-            {(t.salary as any).vacationPayLabel} ({detail.vacationDays} {t.salary.colDays.toLowerCase()}, ×{detail.vacationCoeff}):&nbsp;
+            {t.salary.vacationPayLabel} ({detail.vacationDays} {t.salary.colDays.toLowerCase()}, ×{detail.vacationCoeff}):&nbsp;
             <b>{fmt(detail.vacationPay)} {cur}</b>
           </div>
         )}
@@ -557,14 +557,14 @@ function DetailContent({ detail, cur }: { detail: SalaryDetail; cur: string }) {
         {/* Лікарняні */}
         {detail.sickDays > 0 && (
           <div style={{ fontSize: 13, color: '#cf1322', marginBottom: 4 }}>
-            {(t.salary as any).sickPayLabel} ({detail.sickDays} {t.salary.colDays.toLowerCase()}, ×{detail.sickCoeff}):&nbsp;
+            {t.salary.sickPayLabel} ({detail.sickDays} {t.salary.colDays.toLowerCase()}, ×{detail.sickCoeff}):&nbsp;
             <b>{fmt(detail.sickPay)} {cur}</b>
           </div>
         )}
 
         {detail.advance > 0 && (
           <div style={{ fontSize: 13, color: '#fa8c16', marginBottom: 4 }}>
-            {(t.salary as any).advanceDeduct}
+            {t.salary.advanceDeduct}
             {detail.advanceDate ? ` (${dayjs(detail.advanceDate).format('DD.MM')})` : ''}
             : <b>-{fmt(detail.advance)} {cur}</b>
           </div>

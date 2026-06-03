@@ -555,7 +555,7 @@ function CellEditor({
           className={`timesheet-cell${open ? ' open' : ''}${weekend && !code ? ' weekend' : ''}`}
           style={{ background: color || (code ? undefined : (weekend ? '#f5f5f5' : undefined)) }}
         >
-          {code ? ((t.timesheet as any).codeDisplay?.[code] ?? code) : (weekend ? ((t.timesheet as any).codeDisplay?.['В'] ?? 'В') : '')}
+          {code ? (t.timesheet.codeDisplay?.[code] ?? code) : (weekend ? (t.timesheet.codeDisplay?.['В'] ?? 'В') : '')}
           {code === 'Я' && (
             <div style={{ fontSize: 8, color: '#666', lineHeight: 1.2, marginTop: 1 }}>
               {hasTimes ? (

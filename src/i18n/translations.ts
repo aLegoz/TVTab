@@ -31,6 +31,7 @@ const ru = {
     scanning: 'Сканирование сети... (3 сек)',
     noServers: 'Серверов не найдено',
     selectServer: 'Выбрать',
+    connectError: 'Не удалось подключиться',
   },
   employees: {
     title: 'Справочник сотрудников',
@@ -226,6 +227,7 @@ const uk: typeof ru = {
     scanning: 'Сканування мережі... (3 сек)',
     noServers: 'Серверів не знайдено',
     selectServer: 'Вибрати',
+    connectError: 'Не вдалося підключитися',
   },
   employees: {
     title: 'Довідник співробітників',
@@ -421,6 +423,7 @@ const en: typeof ru = {
     scanning: 'Scanning network... (3 sec)',
     noServers: 'No servers found',
     selectServer: 'Select',
+    connectError: 'Could not connect',
   },
   employees: {
     title: 'Employee directory',
